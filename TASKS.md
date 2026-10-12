@@ -17,6 +17,10 @@
 - Codex fetches and safely synchronizes main before each task, preserves owner-local/untracked files, avoids hard reset, deletions and force push.
 - States: PLANNED, IN_PROGRESS, READY_FOR_AUDIT, FAIL/BLOCKED, PASS/CLOSED. Log must include actual SHA, commands/results, elapsed time, seed/engine version, Drive evidence paths; do not invent tests.
 
+## REFERENCE-ADOPTION FINAL COMPLETENESS RULE
+- All newly numbered research-adoption tasks placed within owning milestones are REQUIRED FOR AUDIT unless explicitly marked optional AND disabled with owner-approved guard, or recorded as BLOCKED with a documented dependency. Historical M00/G00 first prompt files may predate expansion: use the newest Google Drive addendum and revise numbered scope prior to executing Codex. Never mark a milestone PASS based only on its older baseline checklist.
+- Original status/state authority stays with ChatGPT via this root TASKS.md. No user project is claimed implemented by planning updates. Engine ENG-M24 and Factory LFX-M14 remain required independent v1.0 gates before themed game production.
+
 ## Gates
 - Exact Engine parity, deterministic replay and graded uncertainty: 'failed search' is not proof UNSOLVED. Every auto-generated level must be engine-compatible and verified before publication.
 - Owner approval required for production remote release and destructive operations. R2 secrets must never go into Git/Unity builds.
@@ -262,7 +266,7 @@ _Total 12 milestones, 100 numbered tasks. None yet implemented._
 - [ ] **LFX-M12-011 M12 audit** `PLANNED`. **Acceptance:** Independently verify legal-age constraints, impossible grant prevention and five-title idempotent runtime playback.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
 - [ ] **LFX-M12-012 Events, milestones and claim preview** `PLANNED`. **Implementation and acceptance:** Author 10-level journey, truthful preview, daily/weekly, first-try, star chest, earned album and comeback reward metadata with expiry/offline and non-farming validation against Engine progress events. **Proof:** exact Engine SHA/schema, runnable deterministic positive and negative fixture, output statuses, bounded solver budgets, redacted Google Drive evidence, independent audit PASS.
 - [ ] **LFX-M12-013 Per-game content cap and sensitive audience policies** `PLANNED`. **Implementation and acceptance:** Validate optional ads/collection/earned packs and age-safe events, no hidden child progression pressure or adult-only monetization metadata emitted for Wonder Pop. **Proof:** exact Engine SHA/schema, runnable deterministic positive and negative fixture, output statuses, bounded solver budgets, redacted Google Drive evidence, independent audit PASS.
-**LFX-M12 exit:** all 11 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
+**LFX-M12 exit:** all 13 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
 
 ### LFX-M13 | Five-game catalog, ad placement and economy balancing workbench
 **State:** PLANNED. Execution blocked by upstream interface and age/privacy/provider sign-off. Actual tests and independent audit before PASS.
@@ -278,7 +282,7 @@ _Total 12 milestones, 100 numbered tasks. None yet implemented._
 - [ ] **LFX-M13-009 Catalog change diff audit** `PLANNED`. **Acceptance:** Trace revisions of SKU placement and event reward balance, show cost/eligibility impact and create proposed change record in Drive.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
 - [ ] **LFX-M13-010 Negative balance tests** `PLANNED`. **Acceptance:** Failed purchase verification, duplicate claim, canceled ad callback, stale store catalog, underage profile and bad signature never mint entitlement.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
 - [ ] **LFX-M13-011 Store/support/UI availability states** `PLANNED`. **Implementation and acceptance:** Editor validates buy/ad/claim/store-offline/owned/disabled/pending/localized text references and skin availability for all five, preventing player-visible dead CTAs. **Proof:** exact Engine SHA/schema, runnable deterministic positive and negative fixture, output statuses, bounded solver budgets, redacted Google Drive evidence, independent audit PASS.
-**LFX-M13 exit:** all 10 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
+**LFX-M13 exit:** all 11 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
 
 ### LFX-M14 | Commercially complete Factory v1.0 cross-title and security signoff
 **State:** PLANNED. Execution blocked by upstream interface and age/privacy/provider sign-off. Actual tests and independent audit before PASS.
@@ -295,7 +299,7 @@ _Total 12 milestones, 100 numbered tasks. None yet implemented._
 - [ ] **LFX-M14-010 End-to-end five-bot qualification** `PLANNED`. **Implementation and acceptance:** Five policies run against every enabled advanced mechanic and per-game profile with forced invalid schema/timeout/UNKNOWN fixture, no solver disagreement with Engine. **Proof:** exact Engine SHA/schema, runnable deterministic positive and negative fixture, output statuses, bounded solver budgets, redacted Google Drive evidence, independent audit PASS.
 - [ ] **LFX-M14-011 Final release QA and owner evidence gate** `PLANNED`. **Implementation and acceptance:** Approve first-three tutorial, five profile look-and-feel, multi-seed difficulty, no near-identical levels, remote disables and content rights; actual full and reduced FX, mobile QA and Factory no-test-shipping proof. **Proof:** exact Engine SHA/schema, runnable deterministic positive and negative fixture, output statuses, bounded solver budgets, redacted Google Drive evidence, independent audit PASS.
 - [ ] **LFX-M14-012 Optional Future capabilities signoff** `PLANNED`. **Implementation and acceptance:** P2 timed/endless, competitive and leaderboard metadata present only as versioned disabled options until owner/policy approves per title; no social/ads metadata in child builds. **Proof:** exact Engine SHA/schema, runnable deterministic positive and negative fixture, output statuses, bounded solver budgets, redacted Google Drive evidence, independent audit PASS.
-**LFX-M14 exit:** all 9 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
+**LFX-M14 exit:** all 12 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
 
 ## Revised final gate
 - ENGINE ENG-M24 and Factory LFX-M14 final audited PASS are required for first five branded game coding work.
