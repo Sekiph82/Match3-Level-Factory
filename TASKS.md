@@ -172,7 +172,7 @@
 - [ ] **LFX-M10-008 No silent prod write** `PLANNED`. **Deliverable:** Factory publish needs authorized channel, trace and preview. **Acceptance evidence:** linked implementation commit, exact positive/negative tests, run seed and version where applicable, Drive-based Codex log and independently reviewed audit.
 **LFX-M10 exit:** all subtasks PASS, no blocker, owner approval where needed.
 
-### LFX-M11 | Release v1.0 and five titles qualification
+### LFX-M11 | Core level-content v0.9 qualification (not final commercial v1.0)
 **State: PLANNED; closure only after independent PASS and reproducible Drive evidence.**
 
 - [ ] **LFX-M11-001 Factory clean install** `PLANNED`. **Deliverable:** Fresh Windows Unity 6.6 project and CLI setup instructions. **Acceptance evidence:** linked implementation commit, exact positive/negative tests, run seed and version where applicable, Drive-based Codex log and independently reviewed audit.
@@ -182,12 +182,73 @@
 - [ ] **LFX-M11-005 Bulk test** `PLANNED`. **Deliverable:** Representative 100-level packs and seed budget profile. **Acceptance evidence:** linked implementation commit, exact positive/negative tests, run seed and version where applicable, Drive-based Codex log and independently reviewed audit.
 - [ ] **LFX-M11-006 Legal review** `PLANNED`. **Deliverable:** SDK MIT, third-party art and Unity build rights verification. **Acceptance evidence:** linked implementation commit, exact positive/negative tests, run seed and version where applicable, Drive-based Codex log and independently reviewed audit.
 - [ ] **LFX-M11-007 Independent audit** `PLANNED`. **Deliverable:** No hard blocker; consumer build exclusion tests for Factory/test components passed; owner greenlight, timestamped evidence and rollback plan. **Acceptance evidence:** linked implementation commit, exact positive/negative tests, run seed and version where applicable, Drive-based Codex log and independently reviewed audit.
-- [ ] **LFX-M11-008 Factory v1 release** `PLANNED`. **Deliverable:** Immutable tag, docs, package and changelog before game coding. **Acceptance evidence:** linked implementation commit, exact positive/negative tests, run seed and version where applicable, Drive-based Codex log and independently reviewed audit.
+- [ ] **LFX-M11-008 Factory v1 release** `PLANNED`. **Deliverable:** Core Factory v0.9 candidate tag, docs, package and changelog; commercial final release remains GATED to LFX-M14. **Acceptance evidence:** linked implementation commit, exact positive/negative tests, run seed and version where applicable, Drive-based Codex log and independently reviewed audit.
 **LFX-M11 exit:** all subtasks PASS, no blocker, owner approval where needed.
 
 ## Final release requirements
 - Five game profiles: profile→editor→validated pack→engine runtime→deterministic replay→remote patch all pass.
 - All deployment credentials remain outside repos, proofs in Drive and runtime packages signed + hashed.
-- v1.0 is *not* implicitly approved by completing source code. Owner and independent audit approval are mandatory.
+- Core Factory v0.9 and commercial Factory v1.0 are not implicitly approved by completing source code. Final sign-off is LFX-M14 after the commercial/editorial additions below; owner and independent audit approval mandatory.
 
 _Total 12 milestones, 100 numbered tasks. None yet implemented._
+
+## COMMERCIAL / LIVEOPS FACTORY EXPANSION (research 2026-10-12)
+
+> LFX-M00..M11 are retained as planned core content pipeline tasks. LFX-M11 is now **core v0.9 checkpoint**; commercial Factory v1.0 requires LFX-M12..M14 completion. Do not claim any task implemented, tested or independently approved.
+
+### Cross-repo invariant
+- Use the exact ENGINE gameplay and ENG-M20 event/remote-config/commerce metadata interfaces; do not build a duplicate ad client, IAP server, identity provider or gameplay solver in Factory.
+- Google Drive holds prompts, Codex logs, audit results and evidence. GitHub holds root TASKS.md, source/test code and approved code documentation only.
+- Production content release requires owner approval and signed manifest/complete staging. No secrets in a consumer build. Kids game and child profile policy must fail closed.
+
+
+### LFX-M12 | Cross-game LiveOps/event authoring and remote config publication
+**State:** PLANNED. Execution blocked by upstream interface and age/privacy/provider sign-off. Actual tests and independent audit before PASS.
+
+- [ ] **LFX-M12-001 Shared live-event schema** `PLANNED`. **Acceptance:** Consume ENGINE ENG-M20 live-event and remote-config contracts for five game IDs, typed capability checks and future schema upgrades.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-002 Calendar-based editor** `PLANNED`. **Acceptance:** Schedule daily, weekly and seasonal goal/world/level events with start/end, timezone, daylight-saving and offline fallback preview.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-003 Promotion staging** `PLANNED`. **Acceptance:** Provide game-specific promotion metadata and approved booster/coin grant definitions while rejecting client-authored premium entitlements.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-004 Experiment configuration** `PLANNED`. **Acceptance:** Create consent-eligible non-sensitive control/variant plans with stable buckets, holdouts, a rollback path and Wonder Pop exclusion from behavioral targeting.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-005 Per-title age and ad policy** `PLANNED`. **Acceptance:** Coral/Garage/Dino/Realms targeted-age profile and Wonder Pop 5–12: forbid incompatible analytics/ad placements/offer flags even if user attempts bypass.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-006 Emergency feature gate** `PLANNED`. **Acceptance:** Owner-facing disable/enable valid content ID, event/offer kill switch, and compatibility matrix without code patching.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-007 Preview event simulator** `PLANNED`. **Acceptance:** Dry-run per five game profiles with remote content, app version, server time/UTC and existing claim state; never double grant.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-008 Safe remote-config export** `PLANNED`. **Acceptance:** Generate declarative validated signed JSON for selected backend configuration provider; do not store cloud admin keys in Unity clients.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-009 Approval workflow** `PLANNED`. **Acceptance:** Draft→QA→owner approve→staging→production publish with author/version/audit and rollback requirement.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-010 Offline/live boundary QA** `PLANNED`. **Acceptance:** Timezone changes, stale manifest, duplicate season activation, absent content, owner-stopped campaign and kid-policy tests.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M12-011 M12 audit** `PLANNED`. **Acceptance:** Independently verify legal-age constraints, impossible grant prevention and five-title idempotent runtime playback.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+**LFX-M12 exit:** all 11 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
+
+### LFX-M13 | Five-game catalog, ad placement and economy balancing workbench
+**State:** PLANNED. Execution blocked by upstream interface and age/privacy/provider sign-off. Actual tests and independent audit before PASS.
+
+- [ ] **LFX-M13-001 Catalog metadata map** `PLANNED`. **Acceptance:** Model approved app-specific Apple/Google SKU identifiers, package descriptions and product types; store price/currency always fetched in game from actual store.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-002 Offer placement authoring** `PLANNED`. **Acceptance:** Define adult-eligible opt-in rewarded slots, no-fill fallback, child-prohibited slot handling, placement frequency caps and content lockouts.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-003 Economy balance tools** `PLANNED`. **Acceptance:** Simulate coin income/sinks, heart regen, boosters, daily claim, event rewards and level completion with across-game shared formula contracts.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-004 IAP item compliance guard** `PLANNED`. **Acceptance:** Validate SKU existence namespace, entitlement and reward mapping, do not allow a client-side price override or arbitrary premium grant.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-005 Original asset references** `PLANNED`. **Acceptance:** Five themes map shared VFX/booster IDs to distinct licensed sprites and effects with rights/provenance fields.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-006 Localisation QA** `PLANNED`. **Acceptance:** Export localizable event/offer messages, fallback text and thumbnail/asset references for five title theme packs.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-007 Feature flag matrix** `PLANNED`. **Acceptance:** Dino/Coral child-target ambiguity and Wonder Pop default no ads/third-party behavioral analytics, age category check and release hold on violation.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-008 Remote-publishing dry run** `PLANNED`. **Acceptance:** Staging only until explicit owner approval; publish version hashes and verify Engine ENG-M20/21 contract and rollback.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-009 Catalog change diff audit** `PLANNED`. **Acceptance:** Trace revisions of SKU placement and event reward balance, show cost/eligibility impact and create proposed change record in Drive.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M13-010 Negative balance tests** `PLANNED`. **Acceptance:** Failed purchase verification, duplicate claim, canceled ad callback, stale store catalog, underage profile and bad signature never mint entitlement.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+**LFX-M13 exit:** all 10 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
+
+### LFX-M14 | Commercially complete Factory v1.0 cross-title and security signoff
+**State:** PLANNED. Execution blocked by upstream interface and age/privacy/provider sign-off. Actual tests and independent audit before PASS.
+
+- [ ] **LFX-M14-001 Engine 1.0 dependency gate** `PLANNED`. **Acceptance:** Pin independently audited ENGINE ENG-M24 v1.0; validate Factory uses exact rules and schemas, no embedded second resolver.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-002 Five game live-config compilation** `PLANNED`. **Acceptance:** Each profile exports worlds/levels, LiveOps policy, approved offer metadata and title-specific age guards.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-003 Full offline and OTA replay** `PLANNED`. **Acceptance:** Five staging manifests load, update, fail corrupt hash, rollback, preserve claims, restrict incompatible engine versions.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-004 Store and ad policy denial fixtures** `PLANNED`. **Acceptance:** Invalid SKU, forced ads in child profile, personalized experiment on child profile and unverified rewards all produce blocking validation errors.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-005 Release firewall validation** `PLANNED`. **Acceptance:** Verify Factory/editor/tests/credentials/evidence never shipped inside game APK/AAB/IPA or remote content bundles.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-006 No production secrets** `PLANNED`. **Acceptance:** Admin tokens and R2 writer credentials stay outside Git/Unity player, publish actor audited and owner grants approval for prod.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-007 Reproducible build and test suite** `PLANNED`. **Acceptance:** Clean Unity 6000.6.5f1 editor/CLI compile, unit/solver and content policy tests with timestamps and detailed Drive evidence.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-008 Independent cross-title audit** `PLANNED`. **Acceptance:** ChatGPT audits all criteria and blocking deviations; owner reviews operation permissions and production gate.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+- [ ] **LFX-M14-009 Factory v1.0 tag and handoff** `PLANNED`. **Acceptance:** Immutable release source tag, rollback playbook, API/schema compatibility manifest, install/run tutorial and final five-app greenlight.. **Evidence:** Git commit+SDK/engine pin, positive and negative tests, Stage vs Production config, anonymized Drive receipts and independent audit.
+**LFX-M14 exit:** all 9 tasks audited PASS, no unsigned/invalid release or child policy bypass, owner approval when modifying production.
+
+## Revised final gate
+- ENGINE ENG-M24 and Factory LFX-M14 final audited PASS are required for first five branded game coding work.
+- Core v0.9 checkpoint from LFX-M11 does NOT authorize standalone game production or prod publisher use.
+
+_Commercial expansion: 3 additional milestones and 30 tasks; total Factory: 15 milestones, 130 tasks. Initial all PLANNED._
