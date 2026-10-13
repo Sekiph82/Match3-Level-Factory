@@ -18,7 +18,7 @@
 ## Mission and non-negotiable architecture
 - Standalone 5-game level **editor + generator + solver + difficulty QA + publisher**. Depends on the **MATCH3_ENGINE exact runtime rules**, never forks or approximates them.
 - Five titles: Coral_Rescue, Garage_Legends, Dino_Islands, The_Fractured_Realms, Wonder_Pop; same serialized level schema, progression contract and runtime patch protocol, separate levels/art/content namespaces.
-- Unity installed Editor `6000.6.5f1`. Engine and Factory v1.0 must PASS before themed game implementation. Factory planning/CLI schema tasks may overlap engine only after source contract stabilized.
+- Unity installed Editor `6000.6.5f1`. Engine and Factory v1.0 must PASS before themed game implementation. Factory planning/CLI/schema tasks MUST WAIT until all Engine ENG-M00..ENG-M24 milestones have independently passed; no overlap with Engine development.
 - OTA = levels/data/licensed asset bundles, not C# or executable hot-code. Downloads before gameplay with verified manifest, offline cache and rollback.
 - Never use unlicensed `daltonbr/Match3` code/images: three early level mechanics are references, independently recreated with source attribution/rights review.
 
@@ -33,6 +33,11 @@
 ## REFERENCE-ADOPTION FINAL COMPLETENESS RULE
 - All newly numbered research-adoption tasks placed within owning milestones are REQUIRED FOR AUDIT unless explicitly marked optional AND disabled with owner-approved guard, or recorded as BLOCKED with a documented dependency. Historical M00/G00 first prompt files may predate expansion: use the newest Google Drive addendum and revise numbered scope prior to executing Codex. Never mark a milestone PASS based only on its older baseline checklist.
 - Original status/state authority stays with ChatGPT via this root TASKS.md. No user project is claimed implemented by planning updates. Engine ENG-M24 and Factory LFX-M14 remain required independent v1.0 gates before themed game production.
+
+## OWNER-LOCKED SEQUENTIAL REPOSITORY ORDER | FACTORY SECOND | 2026-10-13
+**FOLLOW THIS ORDER ONLY:** (1) Sekiph82/MATCH3_ENGINE root TASKS.md ENG-M00 through ENG-M24 ALL CLOSED/PASS by independent ChatGPT audits; (2) this Match3-Level-Factory root TASKS.md LFX-M00 through LFX-M14 ALL CLOSED/PASS; (3) five title repositories G00 through G12 after BOTH final release audits. This Factory TASKS.md is NOT ACTIVE while ANY Engine milestone remains open. No early Factory planning, prompts, coding, environment setup, simulation, cross-repo execution or handoff after ENG-M01. First permitted switch is ENGINE ENG-M24 independent PASS -> FACTORY LFX-M00.
+**ON SWITCH:** Import exact published Engine v1.0 package SHA, contract/schema, canonical fixture packs, seed/replay goldens, GameProfile IDs and acceptance evidence from the fully finished Engine. Use them in every Factory task. Engine is the SINGLE rule authority; Factory writes its authoring/solver/generation/preview/publish tools using the pinned Engine runtime, no parallel match resolver. Verify original Engine-schema fixture parity in LFX-M00/M03/M04, five skill personas/multi-seed and publication in existing LFX milestones, and real two-repo end-to-end integration under LFX-M14. Do not retroactively mislabel Engine-owned contract-only tests as a previously performed Factory end-to-end test.
+**BATON:** CURRENT_OWNER stays ENGINE team/auditor while Engine open; FACTORY_NEXT is permitted only after ENG-M24 independent PASS recorded in Engine TASKS.md and Drive. After Factory LFX-M14 independent PASS, transfer baton to game projects, not before. No new milestones/tasks; existing counts/status unchanged. Existing Drive-only master prompt/log/audit, source reuse license, safe local sync and strict independent verification policies remain mandatory.
 
 ## Gates
 - Exact Engine parity, deterministic replay and graded uncertainty: 'failed search' is not proof UNSOLVED. Every auto-generated level must be engine-compatible and verified before publication.
