@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 
 from genlevels import rank_levels
@@ -16,18 +15,17 @@ ULTRAGEM_REVISION = "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12"
 
 
 def run_pipeline(*, rows: int, columns: int, colors: int, seed: int, candidate_count: int,
-                 runs: int, max_moves: int, time_budget_seconds: float, profile_id: str,
+                 runs: int, max_moves: int, profile_id: str,
                  max_levels: int) -> dict:
     if not 1 <= candidate_count <= 16:
         raise ValueError("candidate_count must be between 1 and 16")
-    if candidate_count * runs * max_moves > 4096:
+    if candidate_count * runs * max_moves * 4 > 4096:
         raise ValueError("candidate × runs × moves exceeds the 4096-step work budget")
-    started = time.monotonic()
     candidates = []
     for index in range(candidate_count):
         candidate_seed = (seed + index * 7919) % (2**31 - 1)
         candidate = evaluate_candidate(rows, columns, colors, candidate_seed, runs,
-                                       max_moves, time_budget_seconds)
+                                       max_moves)
         candidate["candidateIndex"] = index
         candidates.append(candidate)
     levels = rank_levels(candidates, seed=seed, max_levels=max_levels)
@@ -73,10 +71,9 @@ def run_pipeline(*, rows: int, columns: int, colors: int, seed: int, candidate_c
         "configuration": {
             "rows": rows, "columns": columns, "colors": colors,
             "candidateCount": candidate_count, "runsPerPolicy": runs,
-            "maxMoves": max_moves, "timeBudgetSecondsPerCandidate": time_budget_seconds,
+            "maxMoves": max_moves, "workBudget": "candidate_count*runs*max_moves*4<=4096",
             "gameProfileId": profile_id,
         },
-        "elapsedSeconds": round(time.monotonic() - started, 6),
         "candidateCountCompleted": len(candidates),
         "rankedLevels": levels,
         "drafts": drafts,
@@ -95,23 +92,27 @@ def main(argv=None) -> int:
     parser.add_argument("--candidates", type=int, default=1)
     parser.add_argument("--runs", type=int, default=2)
     parser.add_argument("--max-moves", type=int, default=20)
-    parser.add_argument("--time-budget-seconds", type=float, default=30.0)
     parser.add_argument("--profile", choices=("Coral_Rescue", "Garage_Legends", "Dino_Islands", "The_Fractured_Realms", "Wonder_Pop"), default="Coral_Rescue")
     parser.add_argument("--max-levels", type=int, default=20)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--overwrite", action="store_true", help="replace an existing output file explicitly")
     args = parser.parse_args(argv)
     try:
         destination = _resolve_output(args.output) if args.output else None
         result = run_pipeline(
             rows=args.rows, columns=args.columns, colors=args.colors, seed=args.seed,
             candidate_count=args.candidates, runs=args.runs, max_moves=args.max_moves,
-            time_budget_seconds=args.time_budget_seconds, profile_id=args.profile,
+            profile_id=args.profile,
             max_levels=args.max_levels,
         )
-        text = json.dumps(result, ensure_ascii=False, indent=2, default=_json_scalar) + "\n"
+        text = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True, default=_json_scalar) + "\n"
         if destination:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(text, encoding="utf-8", newline="\n")
+            if args.overwrite:
+                destination.write_text(text, encoding="utf-8", newline="\n")
+            else:
+                with destination.open("x", encoding="utf-8", newline="\n") as stream:
+                    stream.write(text)
         else:
             sys.stdout.write(text)
         return 0
@@ -135,6 +136,11 @@ def _json_scalar(value):
     if hasattr(value, "item"):
         return value.item()
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def serialize_result(result: dict) -> str:
+    """Return the stable full-result representation used by repeatability checks."""
+    return json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True, default=_json_scalar)
 
 
 if __name__ == "__main__":

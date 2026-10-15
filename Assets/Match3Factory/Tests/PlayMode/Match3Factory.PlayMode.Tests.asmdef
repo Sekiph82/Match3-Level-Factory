@@ -1,0 +1,8 @@
+{
+  "name": "Match3Factory.PlayMode.Tests",
+  "rootNamespace": "Match3Factory.Tests.PlayMode",
+  "references": ["Match3.Reference"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "defineConstraints": ["UNITY_EDITOR"],
+  "autoReferenced": false
+}

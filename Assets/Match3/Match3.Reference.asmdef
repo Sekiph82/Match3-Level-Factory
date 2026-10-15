@@ -5,5 +5,8 @@
     "Unity.TextMeshPro",
     "Unity.ugui"
   ],
-  "autoReferenced": true
+  "defineConstraints": [
+    "UNITY_EDITOR"
+  ],
+  "autoReferenced": false
 }

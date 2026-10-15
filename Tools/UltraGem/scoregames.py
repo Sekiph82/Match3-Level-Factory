@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -108,7 +107,7 @@ def create_scenario(nrows: int, ncols: int, ncolors: int, seed: int):
 
 
 def _simulate_one(board: Board, topfill, selector: Callable, policy: str, run_seed: int,
-                  max_moves: int, max_shuffles: int, deadline: float) -> RunResult:
+                  max_moves: int, max_shuffles: int) -> RunResult:
     numpy.random.seed(run_seed)
     gravity = BoardGravityPuller(board)
     combiner = Combiner(board)
@@ -119,9 +118,6 @@ def _simulate_one(board: Board, topfill, selector: Callable, policy: str, run_se
     outcome = "MOVE_LIMIT"
 
     while moves < max_moves:
-        if time.monotonic() > deadline:
-            outcome = "TIME_BUDGET_EXCEEDED"
-            break
         iterations += 1
         if iterations > max_moves * 100 + max_shuffles * 4 + 100:
             outcome = "STEP_BUDGET_EXCEEDED"
@@ -170,7 +166,7 @@ def _simulate_one(board: Board, topfill, selector: Callable, policy: str, run_se
 
 
 def evaluate_candidate(rows: int, columns: int, colors: int, seed: int, runs: int,
-                       max_moves: int, time_budget_seconds: float = 30.0) -> dict:
+                       max_moves: int) -> dict:
     if not (6 <= rows <= 12 and 6 <= columns <= 12):
         raise ValueError("board dimensions must each be between 6 and 12")
     if not 3 <= colors <= 6:
@@ -179,16 +175,11 @@ def evaluate_candidate(rows: int, columns: int, colors: int, seed: int, runs: in
         raise ValueError("seed must be between 0 and 2^31-1")
     if not 1 <= runs <= 8 or not 1 <= max_moves <= 40:
         raise ValueError("runs must be 1..8 and max_moves must be 1..40")
-    if not 0.1 <= time_budget_seconds <= 120:
-        raise ValueError("time budget must be between 0.1 and 120 seconds")
-
     board, _ = create_scenario(rows, columns, colors, seed)
     # Freeze candidate geometry before simulations so all policies see the same
     # candidate. A fresh filler is bound to each cloned board.
     initial = board.copy()
     policy_runs: dict[str, list[RunResult]] = {}
-    started = time.monotonic()
-    deadline = started + time_budget_seconds
     for policy_index, (name, selector) in enumerate(POLICIES):
         results = []
         for run_index in range(runs):
@@ -196,9 +187,7 @@ def evaluate_candidate(rows: int, columns: int, colors: int, seed: int, runs: in
             filler = NastyTopFiller(trial, ncolors=colors)
             run_seed = (seed + 104729 * (run_index + 1) + 1009 * policy_index) % (2**31 - 1)
             results.append(_simulate_one(trial, filler, selector, name, run_seed,
-                                         max_moves, max_shuffles=20, deadline=deadline))
-            if time.monotonic() > deadline:
-                break
+                                         max_moves, max_shuffles=20))
         policy_runs[name] = results
 
     return {
@@ -209,7 +198,6 @@ def evaluate_candidate(rows: int, columns: int, colors: int, seed: int, runs: in
         "initialBoard": _board_payload(initial),
         "referenceOnly": True,
         "engineValidation": "BLOCKED_ENG_M24",
-        "durationSeconds": round(time.monotonic() - started, 6),
         "statistics": {
             policy: {
                 "completedRuns": len(results),
@@ -245,12 +233,11 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--runs", type=int, default=2)
     parser.add_argument("--max-moves", type=int, default=20)
-    parser.add_argument("--time-budget-seconds", type=float, default=30.0)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
         result = evaluate_candidate(args.rows, args.columns, args.colors, args.seed, args.runs,
-                                    args.max_moves, args.time_budget_seconds)
+                                    args.max_moves)
         text = json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
         if args.output:
             if args.output.is_absolute() or ".." in args.output.parts:

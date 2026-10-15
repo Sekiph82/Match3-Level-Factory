@@ -46,6 +46,8 @@ namespace Match3Factory
                 : Array.Empty<GoalDraft>();
             var errors = draft.Validate();
             if (errors.Count > 0) throw new InvalidOperationException(string.Join(" ", errors));
+            var capabilityErrors = GameProfileCatalog.ValidateDraft(draft);
+            if (capabilityErrors.Count > 0) throw new NotSupportedException(string.Join(" ", capabilityErrors));
             return draft.Canonicalized();
         }
 
@@ -56,6 +58,8 @@ namespace Match3Factory
             var errors = draft.Validate();
             if (errors.Count > 0) throw new InvalidOperationException(string.Join(" ", errors));
             if (draft.layers != 1) throw new NotSupportedException("The sample LevelSO supports one layer only.");
+            if (draft.goals.Length != 1)
+                throw new NotSupportedException("The sample LevelSO represents exactly one goal; composite goals are not exported.");
             var gems = target.gemList == null
                 ? new Dictionary<string, GemSO>(StringComparer.Ordinal)
                 : target.gemList.Where(gem => gem != null).GroupBy(gem => gem.name, StringComparer.Ordinal)
@@ -77,18 +81,30 @@ namespace Match3Factory
                     hasGlass = cell.obstacleId == "sample.glass"
                 });
             }
+            var goal = draft.goals[0];
+            var goalType = target.goalType;
+            var targetScore = target.targetScore;
+            if (goal.targetId == "sample.glass")
+            {
+                int actualGlass = draft.cells.Count(cell => cell.obstacleId == "sample.glass");
+                if (actualGlass == 0 || goal.targetCount != actualGlass)
+                    throw new NotSupportedException($"Glass goal count {goal.targetCount} must equal the board's {actualGlass} glass cells.");
+                goalType = LevelSO.GoalType.Glass;
+            }
+            else if (goal.targetId == "sample.score")
+            {
+                goalType = LevelSO.GoalType.Score;
+                targetScore = goal.targetCount;
+            }
+            else throw new NotSupportedException("The sample LevelSO supports only glass and score goals.");
+
+            // Commit only after every cell, gem and goal has converted successfully.
             target.width = draft.width;
             target.height = draft.height;
             target.moveAmount = draft.moveBudget;
             target.levelGridPositionList = mapped;
-            var goal = draft.goals.FirstOrDefault();
-            if (goal != null && goal.targetId == "sample.glass") target.goalType = LevelSO.GoalType.Glass;
-            else if (goal != null && goal.targetId == "sample.score")
-            {
-                target.goalType = LevelSO.GoalType.Score;
-                target.targetScore = goal.targetCount;
-            }
-            else throw new NotSupportedException("The sample LevelSO supports only glass and score goals.");
+            target.goalType = goalType;
+            target.targetScore = targetScore;
         }
     }
 }

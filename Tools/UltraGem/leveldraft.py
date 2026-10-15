@@ -11,7 +11,9 @@ PROFILE_IDS = {
     "The_Fractured_Realms", "Wonder_Pop",
 }
 TOP_LEVEL_KEYS = {
-    "draftVersion", "validationStatus", "gameProfileId", "seed", "width", "height",
+    "draftVersion", "validationStatus", "gameProfileId", "profileVersion", "worldId", "chapterId", "levelId",
+    "releaseChannel", "platform", "locale", "seed", "width", "height",
+    "minEngineVersion", "maxEngineVersion",
     "layers", "activeMask", "moveBudget", "cells", "goals", "engineSchemaVersion",
     "sourceRepository", "sourceRevision", "sourceKind",
 }
@@ -56,6 +58,21 @@ def validate(draft: dict[str, Any]) -> None:
         raise DraftError("validationStatus must be PROTOTYPE_ONLY until the Engine gate is accepted")
     if draft.get("gameProfileId") not in PROFILE_IDS:
         raise DraftError("unknown gameProfileId")
+    if _bounded_int(draft.get("profileVersion"), 1, 1, "profileVersion") != 1:
+        raise DraftError("unsupported profileVersion")
+    for name in ("worldId", "chapterId", "levelId"):
+        value = draft.get(name)
+        if not isinstance(value, str) or not 1 <= len(value) <= 128 or any(not (ch.isalnum() or ch in "._-") or ord(ch) > 127 for ch in value):
+            raise DraftError(f"{name} must be a stable identifier")
+    if draft.get("releaseChannel") not in {"local", "development", "staging"}:
+        raise DraftError("releaseChannel is not available before ENG-M24")
+    if draft.get("platform") not in {"windows-editor", "windows", "android", "ios", "webgl"}:
+        raise DraftError("unknown platform")
+    import re
+    if not isinstance(draft.get("locale"), str) or re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", draft["locale"]) is None:
+        raise DraftError("locale must be a BCP-47-style language tag")
+    if draft.get("minEngineVersion") is not None or draft.get("maxEngineVersion") is not None:
+        raise DraftError("Engine version constraints are unavailable until ENG-M24")
     width = _bounded_int(draft.get("width"), 1, 32, "width")
     height = _bounded_int(draft.get("height"), 1, 32, "height")
     layers = _bounded_int(draft.get("layers"), 1, 4, "layers")
@@ -139,7 +156,8 @@ def _bounded_int(value, minimum: int, maximum: int, name: str) -> int:
 
 def canonicalize(draft: dict[str, Any]) -> dict[str, Any]:
     result = {key: draft.get(key) for key in (
-        "draftVersion", "validationStatus", "gameProfileId", "seed", "width", "height",
+        "draftVersion", "validationStatus", "gameProfileId", "profileVersion", "worldId", "chapterId", "levelId",
+        "releaseChannel", "platform", "locale", "minEngineVersion", "maxEngineVersion", "seed", "width", "height",
         "layers", "activeMask", "moveBudget", "cells", "goals", "engineSchemaVersion",
         "sourceRepository", "sourceRevision", "sourceKind",
     )}
@@ -203,6 +221,9 @@ def from_ultragem(candidate: dict[str, Any], *, profile_id: str = "Coral_Rescue"
         "activeMask": mask, "moveBudget": move_budget, "cells": cells,
         "goals": [{"goalId": "goal.primary", "targetId": "ultragem.score", "targetCount": 1}],
         "engineSchemaVersion": None, "sourceRepository": "JohannesBuchner/ultragem",
+        "profileVersion": 1, "worldId": "world.prototype", "chapterId": "chapter.prototype",
+        "levelId": f"level.seed-{candidate['seed']}", "releaseChannel": "local", "platform": "windows-editor",
+        "locale": "en", "minEngineVersion": None, "maxEngineVersion": None,
         "sourceRevision": "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12", "sourceKind": "UltraGemCandidate",
     }
     validate(draft)

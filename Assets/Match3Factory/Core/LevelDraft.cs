@@ -10,6 +10,15 @@ namespace Match3Factory
         public int draftVersion = 1;
         public string validationStatus = "PROTOTYPE_ONLY";
         public string gameProfileId = "Coral_Rescue";
+        public int profileVersion = 1;
+        public string worldId = "world.prototype";
+        public string chapterId = "chapter.prototype";
+        public string levelId = "level.prototype";
+        public string releaseChannel = "local";
+        public string platform = "windows-editor";
+        public string locale = "en";
+        public string minEngineVersion;
+        public string maxEngineVersion;
         public long seed;
         public int width = 8;
         public int height = 8;
@@ -29,9 +38,16 @@ namespace Match3Factory
             if (draftVersion != 1) errors.Add("Unsupported draftVersion; expected 1.");
             if (validationStatus != "PROTOTYPE_ONLY") errors.Add("Draft status must remain PROTOTYPE_ONLY until ENG-M24 is independently accepted.");
             if (!ProfileIds.Contains(gameProfileId ?? string.Empty)) errors.Add("Unknown gameProfileId.");
+            if (profileVersion != 1) errors.Add("Unsupported profileVersion; expected 1.");
+            if (!IsStableId(worldId) || !IsStableId(chapterId) || !IsStableId(levelId)) errors.Add("worldId, chapterId and levelId must be stable non-empty identifiers (letters, digits, dot, underscore, hyphen).");
+            if (releaseChannel != "local" && releaseChannel != "development" && releaseChannel != "staging") errors.Add("releaseChannel must be local, development or staging until ENG-M24 is accepted.");
+            if (platform != "windows-editor" && platform != "windows" && platform != "android" && platform != "ios" && platform != "webgl") errors.Add("Unknown target platform.");
+            if (!System.Text.RegularExpressions.Regex.IsMatch(locale ?? string.Empty, "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$")) errors.Add("locale must be a BCP-47-style language tag.");
+            if (!string.IsNullOrEmpty(minEngineVersion) || !string.IsNullOrEmpty(maxEngineVersion)) errors.Add("Engine version constraints are unavailable until ENG-M24 is accepted.");
             if (width < 1 || width > 32) errors.Add("width must be between 1 and 32.");
             if (height < 1 || height > 32) errors.Add("height must be between 1 and 32.");
             if (layers < 1 || layers > 4) errors.Add("layers must be between 1 and 4.");
+            if (seed < 0) errors.Add("seed must be a non-negative signed 64-bit integer.");
             if (moveBudget < 1 || moveBudget > 999) errors.Add("moveBudget must be between 1 and 999.");
             if (cells == null) errors.Add("cells is required.");
             else
@@ -45,6 +61,8 @@ namespace Match3Factory
                 int expectedCells = (int)expectedCellCount;
                 if (activeMask == null || activeMask.Length != expectedCells)
                     errors.Add("activeMask length must equal width × height × layers.");
+                if (cells.Length != expectedCells)
+                    errors.Add($"cells must contain exactly {expectedCells} entries, including holes.");
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var cell in cells)
                 {
@@ -53,6 +71,13 @@ namespace Match3Factory
                         errors.Add($"Cell coordinate out of range: {cell.row},{cell.column},{cell.layer}.");
                     if (string.IsNullOrWhiteSpace(cell.contentId) && string.IsNullOrWhiteSpace(cell.obstacleId) && cell.active)
                         errors.Add($"Active cell {cell.row},{cell.column},{cell.layer} requires contentId or obstacleId.");
+                    if (!cell.active && (!string.IsNullOrEmpty(cell.contentId) || !string.IsNullOrEmpty(cell.obstacleId) || !string.IsNullOrEmpty(cell.specialId) || cell.locked || cell.lockDurability != 0 || cell.obstacleDurability != 0))
+                        errors.Add($"Hole {cell.row},{cell.column},{cell.layer} cannot carry content, obstacle, special, or durability.");
+                    if (cell.lockDurability < 0 || cell.lockDurability > 99)
+                        errors.Add($"Invalid lock durability at {cell.row},{cell.column},{cell.layer}.");
+                    foreach (var identifier in new[] { cell.contentId, cell.obstacleId, cell.specialId })
+                        if (identifier != null && identifier.Length > 128)
+                            errors.Add($"Invalid cell identifier at {cell.row},{cell.column},{cell.layer}.");
                     if (cell.obstacleDurability < 0 || cell.obstacleDurability > 99)
                         errors.Add($"Invalid obstacle durability at {cell.row},{cell.column},{cell.layer}.");
                     string key = $"{cell.row}:{cell.column}:{cell.layer}";
@@ -64,9 +89,16 @@ namespace Match3Factory
                             errors.Add($"activeMask disagrees with cell {key}.");
                     }
                 }
-                if (cells.Length > width * height * layers) errors.Add("cells exceeds board capacity.");
+                if (seen.Count == expectedCells)
+                {
+                    for (int layer = 0; layer < layers; layer++)
+                    for (int row = 0; row < height; row++)
+                    for (int column = 0; column < width; column++)
+                        if (!seen.Contains($"{row}:{column}:{layer}"))
+                            errors.Add($"Missing cell coordinate {row},{column},{layer}.");
+                }
             }
-            if (goals == null) errors.Add("goals is required.");
+            if (goals == null || goals.Length < 1 || goals.Length > 32) errors.Add("goals must contain 1..32 entries.");
             else
             {
                 var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -75,6 +107,8 @@ namespace Match3Factory
                     if (goal == null) { errors.Add("goals cannot contain null entries."); continue; }
                     if (string.IsNullOrWhiteSpace(goal.goalId) || !ids.Add(goal.goalId)) errors.Add("Goal IDs must be present and unique.");
                     if (string.IsNullOrWhiteSpace(goal.targetId)) errors.Add("Goal targetId is required.");
+                    if (goal.goalId != null && goal.goalId.Length > 128) errors.Add("Goal IDs cannot exceed 128 characters.");
+                    if (goal.targetId != null && goal.targetId.Length > 128) errors.Add("Goal targetId cannot exceed 128 characters.");
                     if (goal.targetCount < 1 || goal.targetCount > 99999) errors.Add("Goal targetCount is out of range.");
                 }
             }
@@ -94,13 +128,28 @@ namespace Match3Factory
 
         public LevelDraft Clone()
         {
-            return UnityEngine.JsonUtility.FromJson<LevelDraft>(UnityEngine.JsonUtility.ToJson(this));
+            var clone = UnityEngine.JsonUtility.FromJson<LevelDraft>(UnityEngine.JsonUtility.ToJson(this));
+            foreach (var cell in clone.cells)
+            {
+                if (string.IsNullOrEmpty(cell.contentId)) cell.contentId = null;
+                if (string.IsNullOrEmpty(cell.obstacleId)) cell.obstacleId = null;
+                if (string.IsNullOrEmpty(cell.specialId)) cell.specialId = null;
+            }
+            if (string.IsNullOrEmpty(clone.engineSchemaVersion)) clone.engineSchemaVersion = null;
+            if (string.IsNullOrEmpty(clone.minEngineVersion)) clone.minEngineVersion = null;
+            if (string.IsNullOrEmpty(clone.maxEngineVersion)) clone.maxEngineVersion = null;
+            if (string.IsNullOrEmpty(clone.sourceRepository)) clone.sourceRepository = null;
+            if (string.IsNullOrEmpty(clone.sourceRevision)) clone.sourceRevision = null;
+            if (string.IsNullOrEmpty(clone.sourceKind)) clone.sourceKind = null;
+            return clone;
         }
 
         private static readonly HashSet<string> ProfileIds = new HashSet<string>(StringComparer.Ordinal)
         {
             "Coral_Rescue", "Garage_Legends", "Dino_Islands", "The_Fractured_Realms", "Wonder_Pop"
         };
+
+        private static bool IsStableId(string value) => !string.IsNullOrEmpty(value) && value.Length <= 128 && System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
     }
 
     [Serializable]

@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import sys
+import tempfile
 import unittest
 import warnings
 from unittest.mock import patch
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import leveldraft
-from factory_pipeline import main as pipeline_main, run_pipeline
+from factory_pipeline import main as pipeline_main, run_pipeline, serialize_result
 from genlevels import rank_levels
 from scoregames import STAT_NAMES, create_scenario, evaluate_candidate, scoring_function
 
@@ -30,9 +31,10 @@ class UltraGemCompatibilityTests(unittest.TestCase):
         self.assertEqual(board.shape, (7, 9))
 
     def test_policy_simulation_is_bounded_and_seeded(self):
-        first = evaluate_candidate(6, 6, 3, 22, runs=1, max_moves=2, time_budget_seconds=15)
-        second = evaluate_candidate(6, 6, 3, 22, runs=1, max_moves=2, time_budget_seconds=15)
-        self.assertEqual(first["initialBoard"], second["initialBoard"])
+        first = evaluate_candidate(6, 6, 3, 22, runs=1, max_moves=2)
+        second = evaluate_candidate(6, 6, 3, 22, runs=1, max_moves=2)
+        self.assertEqual(serialize_result(first), serialize_result(second))
+        self.assertNotIn("durationSeconds", first)
         for name in ("worst", "random", "best", "smart"):
             self.assertEqual(first["statistics"][name]["runSeeds"], second["statistics"][name]["runSeeds"])
             self.assertLessEqual(len(first["statistics"][name]["steps"][0]), 2)
@@ -101,6 +103,13 @@ class LevelDraftTests(unittest.TestCase):
         self.assertEqual(encoded, leveldraft.dumps_canonical(decoded))
         self.assertEqual(leveldraft.sha256(draft), leveldraft.sha256(decoded))
 
+    def test_shared_csharp_python_unicode_golden_fixture(self):
+        fixture = ROOT.parents[1] / "Assets" / "Match3Factory" / "Tests" / "Fixtures" / "leveldraft_v1_unicode.json"
+        encoded = fixture.read_text(encoding="utf-8").lstrip("\ufeff").strip()
+        draft = leveldraft.loads_strict(encoded)
+        self.assertEqual(leveldraft.dumps_canonical(draft), encoded)
+        self.assertEqual(leveldraft.sha256(draft), "60943fb8cc6a9941803f66e9785b12ccaa70af12648042e05ed594868af209a4")
+
     def test_duplicate_json_keys_are_rejected(self):
         draft = leveldraft.from_ultragem(self.candidate())
         encoded = leveldraft.dumps_canonical(draft)
@@ -121,6 +130,14 @@ class LevelDraftTests(unittest.TestCase):
         invalid["width"] = 33
         with self.assertRaisesRegex(leveldraft.DraftError, "width must be"):
             leveldraft.validate(invalid)
+        invalid = copy.deepcopy(draft)
+        invalid["releaseChannel"] = "production"
+        with self.assertRaisesRegex(leveldraft.DraftError, "releaseChannel"):
+            leveldraft.validate(invalid)
+        invalid = copy.deepcopy(draft)
+        invalid["minEngineVersion"] = "1.0"
+        with self.assertRaisesRegex(leveldraft.DraftError, "Engine version constraints"):
+            leveldraft.validate(invalid)
 
     def test_cli_rejects_parent_traversal_before_running_pipeline(self):
         stderr = io.StringIO()
@@ -132,19 +149,42 @@ class LevelDraftTests(unittest.TestCase):
 
     def test_pipeline_reports_engine_gate_and_is_deterministic(self):
         first = run_pipeline(rows=6, columns=6, colors=3, seed=28, candidate_count=1,
-                             runs=1, max_moves=2, time_budget_seconds=15,
+                             runs=1, max_moves=2,
                              profile_id="Coral_Rescue", max_levels=2)
         second = run_pipeline(rows=6, columns=6, colors=3, seed=28, candidate_count=1,
-                              runs=1, max_moves=2, time_budget_seconds=15,
+                              runs=1, max_moves=2,
                               profile_id="Coral_Rescue", max_levels=2)
         self.assertEqual(first["resultStatus"], "REFERENCE_ONLY_UNVERIFIED")
         self.assertEqual(first["engineStatus"], "BLOCKED_ENG_M24")
-        self.assertEqual(first["referenceStatistics"][0]["initialBoard"], second["referenceStatistics"][0]["initialBoard"])
+        self.assertEqual(serialize_result(first), serialize_result(second))
+        self.assertNotIn("elapsedSeconds", first)
         self.assertEqual(first["candidateCountCompleted"], 1)
+
+    def test_cli_refuses_to_overwrite_existing_output_without_flag(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd() / "Logs") as temp_dir:
+            output = Path(temp_dir) / "owner-data.json"
+            original = b"keep this exact file\n"
+            output.write_bytes(original)
+            stderr = io.StringIO()
+            with patch("factory_pipeline.run_pipeline", return_value={"resultStatus": "test"}):
+                with contextlib.redirect_stderr(stderr):
+                    result = pipeline_main(["--output", str(output.relative_to(Path.cwd()))])
+            self.assertEqual(result, 2)
+            self.assertIn("File exists", stderr.getvalue())
+            self.assertEqual(output.read_bytes(), original)
+
+    def test_cli_overwrite_requires_and_honors_explicit_flag(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd() / "Logs") as temp_dir:
+            output = Path(temp_dir) / "result.json"
+            output.write_text("old", encoding="utf-8")
+            with patch("factory_pipeline.run_pipeline", return_value={"resultStatus": "new"}):
+                result = pipeline_main(["--output", str(output.relative_to(Path.cwd())), "--overwrite"])
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), {"resultStatus": "new"})
 
     def test_pipeline_emits_editable_unranked_draft_when_heuristic_rejects(self):
         result = run_pipeline(rows=6, columns=6, colors=3, seed=17, candidate_count=1,
-                              runs=1, max_moves=10, time_budget_seconds=60,
+                              runs=1, max_moves=10,
                               profile_id="Coral_Rescue", max_levels=5)
         self.assertEqual(result["rankedLevels"], [])
         self.assertEqual(result["unrankedDraftCount"], 1)
