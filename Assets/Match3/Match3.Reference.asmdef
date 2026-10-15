@@ -1,0 +1,9 @@
+{
+  "name": "Match3.Reference",
+  "rootNamespace": "Match3Reference",
+  "references": [
+    "Unity.TextMeshPro",
+    "Unity.ugui"
+  ],
+  "autoReferenced": true
+}

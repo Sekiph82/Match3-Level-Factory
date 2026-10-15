@@ -1,0 +1,11 @@
+{
+  "name": "Match3Factory.Editor.Tests",
+  "rootNamespace": "Match3Factory.Tests",
+  "references": [
+    "Match3Factory.Editor",
+    "Match3.Reference"
+  ],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

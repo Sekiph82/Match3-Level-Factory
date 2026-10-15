@@ -1,0 +1,14 @@
+.venv/
+Library/
+Temp/
+Logs/
+UserSettings/
+obj/
+Build/
+__pycache__/
+*.py[cod]
+*.npy
+*.pdf
+/gamestats/
+/journey-auto/
+/Artifacts/
