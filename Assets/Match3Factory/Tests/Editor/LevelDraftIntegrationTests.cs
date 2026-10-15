@@ -344,6 +344,15 @@ namespace Match3Factory.Tests
         }
 
         [Test]
+        public void UnknownLegacyDraftVersionIsRejectedWithoutRewritingSourceJson()
+        {
+            var json = LevelDraftJson.Serialize(NewDraft()).Replace("\"draftVersion\":1", "\"draftVersion\":0");
+            var original = json;
+            Assert.Throws<System.InvalidOperationException>(() => LevelDraftJson.Parse(json));
+            Assert.That(json, Is.EqualTo(original));
+        }
+
+        [Test]
         public void LevelDraftRejectsMissingDuplicateOffboardAndMaskMismatchCells()
         {
             var draft = NewDraft();

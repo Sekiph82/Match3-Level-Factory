@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 import leveldraft
 from factory_pipeline import main as pipeline_main, run_pipeline, serialize_result
 from genlevels import rank_levels
+from profile_compatibility import diagnose_profile_compatibility
 from scoregames import STAT_NAMES, create_scenario, evaluate_candidate, scoring_function
 
 
@@ -119,6 +120,51 @@ class LevelDraftTests(unittest.TestCase):
         self.assertEqual(encoded, leveldraft.dumps_canonical(decoded))
         self.assertEqual(leveldraft.sha256(draft), leveldraft.sha256(decoded))
 
+    def test_canonical_nested_property_order_ignores_input_field_order(self):
+        draft = leveldraft.from_ultragem(self.candidate())
+        permuted = copy.deepcopy(draft)
+        permuted["cells"] = [dict(reversed(list(cell.items()))) for cell in permuted["cells"]]
+        permuted["goals"] = [dict(reversed(list(goal.items()))) for goal in permuted["goals"]]
+        self.assertEqual(leveldraft.dumps_canonical(draft), leveldraft.dumps_canonical(permuted))
+        self.assertEqual(leveldraft.sha256(draft), leveldraft.sha256(permuted))
+
+    def test_profile_diagnostics_quarantine_without_mutating_reference_flags(self):
+        draft = leveldraft.from_ultragem(self.candidate())
+        before = leveldraft.dumps_canonical(draft)
+        for profile_id in leveldraft.PROFILE_IDS:
+            candidate = copy.deepcopy(draft)
+            candidate["gameProfileId"] = profile_id
+            diagnostics = diagnose_profile_compatibility(candidate)
+            self.assertEqual(diagnostics["localPolicyStatus"], "REJECTED_BY_BUILDER_POLICY", profile_id)
+            self.assertEqual(diagnostics["engineStatus"], "BLOCKED_ENG_M24", profile_id)
+            self.assertFalse(diagnostics["draftMutationPerformed"], profile_id)
+            codes = {item["capabilityId"] for item in diagnostics["findings"]}
+            self.assertIn("cell.lock", codes, profile_id)
+            self.assertIn("special.unmapped", codes, profile_id)
+            self.assertIn("goal.unmapped", codes, profile_id)
+        unknown = copy.deepcopy(draft)
+        unknown["gameProfileId"] = "unknown"
+        self.assertEqual(diagnose_profile_compatibility(unknown)["localPolicyStatus"], "REJECTED_UNKNOWN_PROFILE")
+        self.assertEqual(leveldraft.dumps_canonical(draft), before)
+
+    def test_saved_ranked_pipeline_json_recomputes_embedded_leveldraft_hash(self):
+        with tempfile.TemporaryDirectory(prefix="match3-level-factory-ranked-hash-") as temp_dir:
+            output = Path(temp_dir) / "ranked.json"
+            with patch("factory_pipeline._resolve_output", return_value=output):
+                result = pipeline_main([
+                    "--seed", "712", "--candidates", "1", "--runs", "8",
+                    "--max-moves", "20", "--max-levels", "5", "--output", "ranked.json",
+                ])
+            self.assertEqual(result, 0)
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            ranked = [item for item in saved["drafts"] if item["rankingStatus"] == "RANKED_REFERENCE_HEURISTIC"]
+            self.assertGreaterEqual(len(ranked), 1)
+            for item in ranked:
+                reloaded_draft = leveldraft.loads_strict(json.dumps(item["draft"], sort_keys=True))
+                self.assertEqual(item["draftSha256"], leveldraft.sha256(reloaded_draft))
+                self.assertEqual(item["profileCompatibility"]["engineStatus"], "BLOCKED_ENG_M24")
+                self.assertTrue(item["profileCompatibility"]["findings"])
+
     def test_timed_star_and_localization_metadata_has_strict_validation(self):
         draft = leveldraft.from_ultragem(self.candidate())
         draft.update(timedMode=True, timeLimitSeconds=90, oneStarThreshold=50,
@@ -182,6 +228,15 @@ class LevelDraftTests(unittest.TestCase):
         invalid["minEngineVersion"] = "1.0"
         with self.assertRaisesRegex(leveldraft.DraftError, "Engine version constraints"):
             leveldraft.validate(invalid)
+
+    def test_unknown_legacy_schema_is_rejected_without_mutating_source(self):
+        draft = leveldraft.dumps_canonical(leveldraft.from_ultragem(self.candidate()))
+        unsupported = json.loads(draft)
+        unsupported["draftVersion"] = 0
+        original = json.dumps(unsupported, ensure_ascii=False)
+        with self.assertRaisesRegex(leveldraft.DraftError, "draftVersion must be 1"):
+            leveldraft.loads_strict(original)
+        self.assertEqual(json.dumps(unsupported, ensure_ascii=False), original)
 
     def test_cli_rejects_parent_traversal_before_running_pipeline(self):
         stderr = io.StringIO()

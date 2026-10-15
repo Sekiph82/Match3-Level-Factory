@@ -9,6 +9,7 @@ from pathlib import Path
 
 from genlevels import rank_levels
 from leveldraft import dumps_canonical, from_ultragem
+from profile_compatibility import diagnose_profile_compatibility
 from scoregames import evaluate_candidate
 
 ULTRAGEM_REVISION = "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12"
@@ -46,6 +47,7 @@ def run_pipeline(*, rows: int, columns: int, colors: int, seed: int, candidate_c
             "difficultyHypothesis": recommendation["difficultyHypothesis"],
             "draft": draft,
             "draftSha256": __import__("leveldraft").sha256(draft),
+            "profileCompatibility": diagnose_profile_compatibility(draft),
         })
     # A valid unranked board remains useful as an editable prototype. Keep the
     # draft explicitly unranked and retain the placeholder goal from the mapper;
@@ -60,6 +62,7 @@ def run_pipeline(*, rows: int, columns: int, colors: int, seed: int, candidate_c
                 "difficultyHypothesis": None,
                 "draft": draft,
                 "draftSha256": __import__("leveldraft").sha256(draft),
+                "profileCompatibility": diagnose_profile_compatibility(draft),
             })
     return {
         "resultStatus": "REFERENCE_ONLY_UNVERIFIED",

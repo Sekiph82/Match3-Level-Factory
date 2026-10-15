@@ -77,6 +77,7 @@ namespace Match3Factory
             actions.Add(MakeButton("Undo", Undo));
             actions.Add(MakeButton("Redo", Redo));
             actions.Add(MakeButton("Validate", ValidateDraft));
+            actions.Add(MakeButton("Player metadata", PlayerVisibleMetadataStudioWindow.Open));
             actions.Add(MakeButton("Zoom +", () => SetZoom(zoom + .1f)));
             actions.Add(MakeButton("Zoom −", () => SetZoom(zoom - .1f)));
             rootVisualElement.Add(actions);

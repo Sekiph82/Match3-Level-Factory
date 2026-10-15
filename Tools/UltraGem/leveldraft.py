@@ -24,6 +24,11 @@ CELL_KEYS = {
     "obstacleDurability", "lockDurability", "specialId",
 }
 GOAL_KEYS = {"goalId", "targetId", "targetCount"}
+CELL_PROPERTY_ORDER = (
+    "row", "column", "layer", "active", "locked", "contentId", "obstacleId",
+    "obstacleDurability", "lockDurability", "specialId",
+)
+GOAL_PROPERTY_ORDER = ("goalId", "targetId", "targetCount")
 
 
 class DraftError(ValueError):
@@ -180,8 +185,14 @@ def canonicalize(draft: dict[str, Any]) -> dict[str, Any]:
         "cells", "goals", "engineSchemaVersion",
         "sourceRepository", "sourceRevision", "sourceKind",
     )}
-    result["cells"] = sorted(result["cells"], key=lambda cell: (cell["row"], cell["column"], cell["layer"]))
-    result["goals"] = sorted(result["goals"], key=lambda goal: goal["goalId"])
+    result["cells"] = [
+        {key: cell[key] for key in CELL_PROPERTY_ORDER}
+        for cell in sorted(result["cells"], key=lambda cell: (cell["row"], cell["column"], cell["layer"]))
+    ]
+    result["goals"] = [
+        {key: goal[key] for key in GOAL_PROPERTY_ORDER}
+        for goal in sorted(result["goals"], key=lambda goal: goal["goalId"])
+    ]
     return result
 
 
