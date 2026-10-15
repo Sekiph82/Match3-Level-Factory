@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -60,6 +61,56 @@ namespace Match3Factory.Tests.PlayMode
                 UnityEngine.Object.Destroy(backgroundPrefab);
                 UnityEngine.Object.Destroy(level);
                 foreach (var gem in gems) UnityEngine.Object.Destroy(gem);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator SampleBotPlaysOneMoveOnEachImportedCampaignLevel()
+        {
+            float previousScale = Time.timeScale;
+            Time.timeScale = 8f;
+            var cameraObject = new GameObject("Imported campaign sample camera");
+            var gemPrefab = MakePrefab("Imported campaign gem prefab", true);
+            var glassPrefab = MakePrefab("Imported campaign glass prefab", false);
+            var backgroundPrefab = MakePrefab("Imported campaign background prefab", false);
+            try
+            {
+                foreach (string letter in new[] { "A", "B", "C", "D", "E" })
+                {
+                    var level = AssetDatabase.LoadAssetAtPath<LevelSO>($"Assets/Match3/Levels/Level_{letter}.asset");
+                    Assert.That(level, Is.Not.Null, "Imported sample campaign is missing level " + letter);
+                    var root = new GameObject("Imported campaign level " + letter);
+                    try
+                    {
+                        root.SetActive(false);
+                        var match3 = root.AddComponent<Match3>();
+                        var visual = root.AddComponent<Match3Visual>();
+                        var bot = root.AddComponent<Match3Bot>();
+                        Set(visual, "pfGemGridVisual", gemPrefab.transform);
+                        Set(visual, "pfGlassGridVisual", glassPrefab.transform);
+                        Set(visual, "pfBackgroundGridVisual", backgroundPrefab.transform);
+                        Set(visual, "cameraTransform", cameraObject.transform);
+                        Set(visual, "match3", match3);
+                        Set(bot, "match3", match3);
+                        Set(bot, "match3Visual", visual);
+                        Set(bot, "levelSO", level);
+                        root.SetActive(true);
+                        match3.SetLevelSO(level);
+                        Assert.That(match3.GetAllPossibleMoves(), Is.Not.Empty, "Imported level " + letter + " has no legal sample-bot move.");
+                        float deadline = Time.realtimeSinceStartup + 8f;
+                        while (match3.GetUsedMoveCount() < 1 && Time.realtimeSinceStartup < deadline) yield return null;
+                        Assert.That(match3.GetUsedMoveCount(), Is.GreaterThanOrEqualTo(1), "Sample bot did not play imported level " + letter + ".");
+                    }
+                    finally { UnityEngine.Object.Destroy(root); }
+                }
+            }
+            finally
+            {
+                Time.timeScale = previousScale;
+                UnityEngine.Object.Destroy(cameraObject);
+                UnityEngine.Object.Destroy(gemPrefab);
+                UnityEngine.Object.Destroy(glassPrefab);
+                UnityEngine.Object.Destroy(backgroundPrefab);
             }
         }
 
