@@ -15,6 +15,8 @@ TOP_LEVEL_KEYS = {
     "releaseChannel", "platform", "locale", "seed", "width", "height",
     "minEngineVersion", "maxEngineVersion",
     "layers", "activeMask", "moveBudget", "cells", "goals", "engineSchemaVersion",
+    "timedMode", "timeLimitSeconds", "oneStarThreshold", "twoStarThreshold", "threeStarThreshold",
+    "difficultyLabel", "editorHintKey",
     "sourceRepository", "sourceRevision", "sourceKind",
 }
 CELL_KEYS = {
@@ -78,6 +80,21 @@ def validate(draft: dict[str, Any]) -> None:
     layers = _bounded_int(draft.get("layers"), 1, 4, "layers")
     _bounded_int(draft.get("seed"), 0, 2**63 - 1, "seed")
     _bounded_int(draft.get("moveBudget"), 1, 999, "moveBudget")
+    timed = draft.get("timedMode")
+    if type(timed) is not bool:
+        raise DraftError("timedMode must be boolean")
+    seconds = _bounded_int(draft.get("timeLimitSeconds"), 0, 3600, "timeLimitSeconds")
+    if (timed and seconds < 1) or (not timed and seconds != 0):
+        raise DraftError("timeLimitSeconds must be 1..3600 for timed levels and 0 otherwise")
+    one = _bounded_int(draft.get("oneStarThreshold"), 0, 99999, "oneStarThreshold")
+    two = _bounded_int(draft.get("twoStarThreshold"), one, 99999, "twoStarThreshold")
+    _bounded_int(draft.get("threeStarThreshold"), two, 99999, "threeStarThreshold")
+    for name in ("difficultyLabel", "editorHintKey"):
+        value = draft.get(name)
+        if name == "editorHintKey" and value is None:
+            continue
+        if not isinstance(value, str) or not value or len(value) > 128 or any(not (ch.isalnum() or ch in "._-") or ord(ch) > 127 for ch in value):
+            raise DraftError(f"{name} must be a stable localization key")
     if draft.get("engineSchemaVersion") is not None:
         raise DraftError("engineSchemaVersion must remain null while no accepted final Engine schema is available")
 
@@ -158,7 +175,9 @@ def canonicalize(draft: dict[str, Any]) -> dict[str, Any]:
     result = {key: draft.get(key) for key in (
         "draftVersion", "validationStatus", "gameProfileId", "profileVersion", "worldId", "chapterId", "levelId",
         "releaseChannel", "platform", "locale", "minEngineVersion", "maxEngineVersion", "seed", "width", "height",
-        "layers", "activeMask", "moveBudget", "cells", "goals", "engineSchemaVersion",
+        "layers", "activeMask", "moveBudget", "timedMode", "timeLimitSeconds",
+        "oneStarThreshold", "twoStarThreshold", "threeStarThreshold", "difficultyLabel", "editorHintKey",
+        "cells", "goals", "engineSchemaVersion",
         "sourceRepository", "sourceRevision", "sourceKind",
     )}
     result["cells"] = sorted(result["cells"], key=lambda cell: (cell["row"], cell["column"], cell["layer"]))
@@ -224,6 +243,8 @@ def from_ultragem(candidate: dict[str, Any], *, profile_id: str = "Coral_Rescue"
         "profileVersion": 1, "worldId": "world.prototype", "chapterId": "chapter.prototype",
         "levelId": f"level.seed-{candidate['seed']}", "releaseChannel": "local", "platform": "windows-editor",
         "locale": "en", "minEngineVersion": None, "maxEngineVersion": None,
+        "timedMode": False, "timeLimitSeconds": 0, "oneStarThreshold": 1, "twoStarThreshold": 2,
+        "threeStarThreshold": 3, "difficultyLabel": "difficulty.unrated", "editorHintKey": None,
         "sourceRevision": "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12", "sourceKind": "UltraGemCandidate",
     }
     validate(draft)

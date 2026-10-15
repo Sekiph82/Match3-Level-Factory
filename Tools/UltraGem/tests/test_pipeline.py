@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+import numpy
 from unittest.mock import patch
 from pathlib import Path
 
@@ -22,9 +23,14 @@ from scoregames import STAT_NAMES, create_scenario, evaluate_candidate, scoring_
 
 class UltraGemCompatibilityTests(unittest.TestCase):
     def test_seeded_candidate_board_is_repeatable(self):
+        state_before = numpy.random.get_state()
         left, _ = create_scenario(8, 8, 3, 712)
+        state_after = numpy.random.get_state()
         right, _ = create_scenario(8, 8, 3, 712)
         self.assertEqual(left, right)
+        self.assertEqual(state_before[0], state_after[0])
+        self.assertEqual((state_before[1] == state_after[1]).all(), True)
+        self.assertEqual(state_before[2:], state_after[2:])
 
     def test_non_square_scenario_uses_column_range(self):
         board, _ = create_scenario(7, 9, 4, 91)
@@ -38,6 +44,16 @@ class UltraGemCompatibilityTests(unittest.TestCase):
         for name in ("worst", "random", "best", "smart"):
             self.assertEqual(first["statistics"][name]["runSeeds"], second["statistics"][name]["runSeeds"])
             self.assertLessEqual(len(first["statistics"][name]["steps"][0]), 2)
+
+    def test_candidate_evaluation_restores_and_reseeds_legacy_global_rng(self):
+        first = evaluate_candidate(8, 8, 3, 712, runs=2, max_moves=12)
+        numpy_state_before = numpy.random.get_state()
+        second = evaluate_candidate(8, 8, 3, 712, runs=2, max_moves=12)
+        numpy_state_after = numpy.random.get_state()
+        self.assertEqual(serialize_result(first), serialize_result(second))
+        self.assertEqual(numpy_state_before[0], numpy_state_after[0])
+        self.assertEqual((numpy_state_before[1] == numpy_state_after[1]).all(), True)
+        self.assertEqual(numpy_state_before[2:], numpy_state_after[2:])
 
     def test_event_scoring_preserves_donor_metric_order(self):
         self.assertEqual(
@@ -103,18 +119,46 @@ class LevelDraftTests(unittest.TestCase):
         self.assertEqual(encoded, leveldraft.dumps_canonical(decoded))
         self.assertEqual(leveldraft.sha256(draft), leveldraft.sha256(decoded))
 
+    def test_timed_star_and_localization_metadata_has_strict_validation(self):
+        draft = leveldraft.from_ultragem(self.candidate())
+        draft.update(timedMode=True, timeLimitSeconds=90, oneStarThreshold=50,
+                     twoStarThreshold=100, threeStarThreshold=200,
+                     difficultyLabel="difficulty.casual", editorHintKey="hint.chapter1.level1")
+        leveldraft.validate(draft)
+        invalid = copy.deepcopy(draft)
+        invalid["timeLimitSeconds"] = 0
+        with self.assertRaisesRegex(leveldraft.DraftError, "timeLimitSeconds"):
+            leveldraft.validate(invalid)
+        invalid = copy.deepcopy(draft)
+        invalid["threeStarThreshold"] = 99
+        with self.assertRaisesRegex(leveldraft.DraftError, "threeStarThreshold"):
+            leveldraft.validate(invalid)
+        invalid = copy.deepcopy(draft)
+        invalid["editorHintKey"] = "../unsafe"
+        with self.assertRaisesRegex(leveldraft.DraftError, "editorHintKey"):
+            leveldraft.validate(invalid)
+
     def test_shared_csharp_python_unicode_golden_fixture(self):
         fixture = ROOT.parents[1] / "Assets" / "Match3Factory" / "Tests" / "Fixtures" / "leveldraft_v1_unicode.json"
         encoded = fixture.read_text(encoding="utf-8").lstrip("\ufeff").strip()
         draft = leveldraft.loads_strict(encoded)
         self.assertEqual(leveldraft.dumps_canonical(draft), encoded)
-        self.assertEqual(leveldraft.sha256(draft), "60943fb8cc6a9941803f66e9785b12ccaa70af12648042e05ed594868af209a4")
+        self.assertEqual(leveldraft.sha256(draft), "3b1c25dbb8636ec84c7ae0eec19df7d6d9bfa777a2a18a3a3384eb8307a308b7")
 
     def test_duplicate_json_keys_are_rejected(self):
         draft = leveldraft.from_ultragem(self.candidate())
         encoded = leveldraft.dumps_canonical(draft)
         with self.assertRaisesRegex(leveldraft.DraftError, "duplicate JSON key"):
             leveldraft.loads_strict(encoded[:-1] + ',"seed":1}')
+
+    def test_strict_json_rejects_wrong_types_malformed_escapes_and_trailing_data(self):
+        draft = leveldraft.dumps_canonical(leveldraft.from_ultragem(self.candidate()))
+        with self.assertRaises(leveldraft.DraftError):
+            leveldraft.loads_strict(draft.replace('"timedMode":false', '"timedMode":0'))
+        with self.assertRaisesRegex(leveldraft.DraftError, "invalid JSON"):
+            leveldraft.loads_strict(draft.replace("difficulty.unrated", "difficulty\\qbad"))
+        with self.assertRaisesRegex(leveldraft.DraftError, "invalid JSON"):
+            leveldraft.loads_strict(draft + " false")
 
     def test_unknown_profile_unknown_fields_and_oversized_board_are_rejected(self):
         draft = leveldraft.from_ultragem(self.candidate())
@@ -161,24 +205,26 @@ class LevelDraftTests(unittest.TestCase):
         self.assertEqual(first["candidateCountCompleted"], 1)
 
     def test_cli_refuses_to_overwrite_existing_output_without_flag(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd() / "Logs") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="match3-level-factory-test-") as temp_dir:
             output = Path(temp_dir) / "owner-data.json"
             original = b"keep this exact file\n"
             output.write_bytes(original)
             stderr = io.StringIO()
-            with patch("factory_pipeline.run_pipeline", return_value={"resultStatus": "test"}):
+            with patch("factory_pipeline.run_pipeline", return_value={"resultStatus": "test"}), \
+                    patch("factory_pipeline._resolve_output", return_value=output):
                 with contextlib.redirect_stderr(stderr):
-                    result = pipeline_main(["--output", str(output.relative_to(Path.cwd()))])
+                    result = pipeline_main(["--output", "owner-data.json"])
             self.assertEqual(result, 2)
             self.assertIn("File exists", stderr.getvalue())
             self.assertEqual(output.read_bytes(), original)
 
     def test_cli_overwrite_requires_and_honors_explicit_flag(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd() / "Logs") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="match3-level-factory-test-") as temp_dir:
             output = Path(temp_dir) / "result.json"
             output.write_text("old", encoding="utf-8")
-            with patch("factory_pipeline.run_pipeline", return_value={"resultStatus": "new"}):
-                result = pipeline_main(["--output", str(output.relative_to(Path.cwd())), "--overwrite"])
+            with patch("factory_pipeline.run_pipeline", return_value={"resultStatus": "new"}), \
+                    patch("factory_pipeline._resolve_output", return_value=output):
+                result = pipeline_main(["--output", "result.json", "--overwrite"])
             self.assertEqual(result, 0)
             self.assertEqual(json.loads(output.read_text(encoding="utf-8")), {"resultStatus": "new"})
 

@@ -37,6 +37,20 @@ namespace Match3Factory.Tests
         }
 
         [Test]
+        public void FiveImportedSampleLevelsRoundTripThroughNeutralDraftSchema()
+        {
+            foreach (string letter in new[] { "A", "B", "C", "D", "E" })
+            {
+                var source = AssetDatabase.LoadAssetAtPath<LevelSO>($"Assets/Match3/Levels/Level_{letter}.asset");
+                Assert.That(source, Is.Not.Null, "Missing imported sample campaign level " + letter);
+                var draft = LevelDraftUnitySampleAdapter.FromLevelSO(source, "Coral_Rescue", 100 + letter[0]);
+                var json = LevelDraftJson.Serialize(draft);
+                Assert.That(LevelDraftJson.Serialize(LevelDraftJson.Parse(json)), Is.EqualTo(json));
+                Assert.That(draft.validationStatus, Is.EqualTo("PROTOTYPE_ONLY"));
+            }
+        }
+
+        [Test]
         public void ReferenceAndFactoryAssembliesAreExcludedFromPlayerCompilation()
         {
             var playerAssemblies = CompilationPipeline.GetAssemblies(AssembliesType.Player);
@@ -89,13 +103,57 @@ namespace Match3Factory.Tests
                 Assert.That(profile.Version, Is.EqualTo(1));
                 Assert.That(profile.EnabledCapabilities, Does.Contain("piece.color.basic"));
                 Assert.That(profile.DisabledCapabilities, Does.Contain("transport.portal"));
+                var profileDraft = NewDraft(); profileDraft.gameProfileId = id;
+                Assert.That(GameProfileCatalog.ValidateDraft(profileDraft), Is.Empty, id);
+                Assert.DoesNotThrow(() => LevelDraftJson.Serialize(profileDraft), id);
             }
             Assert.That(GameProfileCatalog.Get("unknown"), Is.Null);
+            Assert.That(GameProfileCatalog.HasUniqueIds(new[] { GameProfileCatalog.Get("Coral_Rescue"), GameProfileCatalog.Get("Wonder_Pop") }), Is.True);
+            Assert.That(GameProfileCatalog.HasUniqueIds(new[] { GameProfileCatalog.Get("Coral_Rescue"), GameProfileCatalog.Get("Coral_Rescue") }), Is.False);
             var wonder = GameProfileCatalog.Get("Wonder_Pop");
+            Assert.That(wonder.DisplayName, Is.EqualTo("Wonder Pop"));
+            Assert.That(wonder.NeutralFallbackLabel, Does.Contain("Neutral placeholder"));
             Assert.That(wonder.AudiencePolicy, Is.EqualTo("CHILD_SAFE_RESTRICTED"));
             Assert.That(wonder.EnabledCapabilities.Any(capability => capability.StartsWith("liveops.")), Is.False);
             var draft = NewDraft(); draft.cells[0].specialId = "ultragem.bomb";
             Assert.That(GameProfileCatalog.ValidateDraft(draft), Is.Not.Empty);
+        }
+
+        [Test]
+        public void RegistryUsesProfileScopedUniqueIdentitiesAndCrossProfileCopyPreservesDestinationMetadata()
+        {
+            var source = NewDraft(); source.levelId = "level.shared"; source.cells[0].contentId = "sample.blue";
+            var destination = NewDraft(); destination.gameProfileId = "Wonder_Pop"; destination.levelId = "level.shared";
+            destination.seed = 909; destination.goals[0].targetCount = 777;
+            Assert.That(LevelDraftRegistry.ValidateUnique(new[] { source, destination }), Is.Empty,
+                "The same level slug may exist in separate profile namespaces.");
+            var duplicate = destination.Clone();
+            Assert.That(LevelDraftRegistry.ValidateUnique(new[] { destination, duplicate }), Is.Not.Empty);
+            string error;
+            Assert.That(LevelDraftRegistry.TryCopyBoard(source, destination, out error), Is.True, error);
+            Assert.That(destination.cells[0].contentId, Is.EqualTo("sample.blue"));
+            Assert.That(destination.seed, Is.EqualTo(909));
+            Assert.That(destination.goals[0].targetCount, Is.EqualTo(777));
+
+            source.cells[0].specialId = "ultragem.bomb";
+            Assert.That(LevelDraftRegistry.TryCopyBoard(source, destination, out error), Is.False);
+            Assert.That(error, Does.Contain("rejects copied board"));
+        }
+
+        [Test]
+        public void TimeStarLocaleAndEditorHintMetadataAreValidated()
+        {
+            var draft = NewDraft();
+            draft.timedMode = true; draft.timeLimitSeconds = 120;
+            draft.oneStarThreshold = 100; draft.twoStarThreshold = 250; draft.threeStarThreshold = 500;
+            draft.locale = "tr-TR"; draft.editorHintKey = "hint.chapter1.level1";
+            Assert.That(draft.Validate(), Is.Empty);
+            draft.timeLimitSeconds = 0;
+            Assert.That(draft.Validate().Any(error => error.Contains("timeLimitSeconds")), Is.True);
+            draft.timeLimitSeconds = 120; draft.threeStarThreshold = 1;
+            Assert.That(draft.Validate().Any(error => error.Contains("Star thresholds")), Is.True);
+            draft.threeStarThreshold = 500; draft.editorHintKey = "../hint";
+            Assert.That(draft.Validate().Any(error => error.Contains("localization keys")), Is.True);
         }
 
         [Test]
@@ -271,7 +329,7 @@ namespace Match3Factory.Tests
             string expected = File.ReadAllText(fixturePath, System.Text.Encoding.UTF8).TrimStart('\uFEFF', '\r', '\n');
             var parsed = LevelDraftJson.Parse(expected);
             Assert.That(LevelDraftJson.Serialize(parsed), Is.EqualTo(expected));
-            Assert.That(LevelDraftJson.Sha256(parsed), Is.EqualTo("60943fb8cc6a9941803f66e9785b12ccaa70af12648042e05ed594868af209a4"));
+            Assert.That(LevelDraftJson.Sha256(parsed), Is.EqualTo("3b1c25dbb8636ec84c7ae0eec19df7d6d9bfa777a2a18a3a3384eb8307a308b7"));
         }
 
         [Test]
@@ -306,6 +364,11 @@ namespace Match3Factory.Tests
         [TestCase("duplicate-key")]
         [TestCase("wrong-type")]
         [TestCase("missing-field")]
+        [TestCase("wrong-boolean")]
+        [TestCase("trailing-token")]
+        [TestCase("bad-escape")]
+        [TestCase("oversized-json")]
+        [TestCase("non-object-root")]
         public void StrictUnityParserRejectsAdversarialDrafts(string mutation)
         {
             string json = LevelDraftJson.Serialize(NewDraft());
@@ -315,8 +378,25 @@ namespace Match3Factory.Tests
                 case "duplicate-key": json = json.Substring(0, json.Length - 1) + ",\"seed\":1}"; break;
                 case "wrong-type": json = json.Replace("\"width\":2", "\"width\":2.5"); break;
                 case "missing-field": json = json.Replace("\"seed\":0,", string.Empty); break;
+                case "wrong-boolean": json = json.Replace("\"timedMode\":false", "\"timedMode\":0"); break;
+                case "trailing-token": json += " false"; break;
+                case "bad-escape": json = json.Replace("difficulty.unrated", "difficulty\\qbad"); break;
+                case "oversized-json": json = new string(' ', 2_000_001); break;
+                case "non-object-root": json = "[]"; break;
             }
             Assert.Throws<System.ArgumentException>(() => LevelDraftJson.Parse(json));
+        }
+
+        [Test]
+        public void StrictUnityParserRejectsExcessiveDepthAndElementCountWithBoundedErrors()
+        {
+            string deep = new string('[', 80) + "0" + new string(']', 80);
+            var depthError = Assert.Throws<System.ArgumentException>(() => LevelDraftJson.Parse(deep));
+            Assert.That(depthError.Message, Does.Contain("nesting depth exceeds"));
+
+            string manyValues = "[" + string.Join(",", Enumerable.Repeat("0", 65536)) + "]";
+            var budgetError = Assert.Throws<System.ArgumentException>(() => LevelDraftJson.Parse(manyValues));
+            Assert.That(budgetError.Message, Does.Contain("element budget exceeded"));
         }
 
         [Test]

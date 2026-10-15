@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -17,6 +18,8 @@ namespace Match3Factory
         private ScrollView boardScroll;
         private Label status;
         private VisualElement goalEditor;
+        private VisualElement levelBrowser;
+        private TextField levelSearch;
         private ObjectField sampleLevel;
         private int selectedGem;
         private int selectedRow;
@@ -95,6 +98,45 @@ namespace Match3Factory
             var moves = new IntegerField("Moves") { value = draft.moveBudget };
             moves.RegisterValueChangedCallback(evt => { PushUndo(); draft.moveBudget = evt.newValue; RefreshStatus(); QueueAutosave(); });
             fields.Add(moves);
+            var world = new TextField("World ID") { value = draft.worldId };
+            world.RegisterValueChangedCallback(evt => { PushUndo(); draft.worldId = evt.newValue; RefreshStatus(); QueueAutosave(); });
+            fields.Add(world);
+            var chapter = new TextField("Chapter ID") { value = draft.chapterId };
+            chapter.RegisterValueChangedCallback(evt => { PushUndo(); draft.chapterId = evt.newValue; RefreshStatus(); QueueAutosave(); });
+            fields.Add(chapter);
+            var level = new TextField("Level ID") { value = draft.levelId };
+            level.RegisterValueChangedCallback(evt => { PushUndo(); draft.levelId = evt.newValue; RefreshStatus(); QueueAutosave(); });
+            fields.Add(level);
+            var locale = new TextField("Locale") { value = draft.locale };
+            locale.RegisterValueChangedCallback(evt => { PushUndo(); draft.locale = evt.newValue; RefreshStatus(); QueueAutosave(); });
+            fields.Add(locale);
+            var timed = new Toggle("Timed mode") { value = draft.timedMode };
+            timed.RegisterValueChangedCallback(evt => { PushUndo(); draft.timedMode = evt.newValue; if (!evt.newValue) draft.timeLimitSeconds = 0; Refresh(); QueueAutosave(); });
+            fields.Add(timed);
+            var seconds = new IntegerField("Time limit (seconds)") { value = draft.timeLimitSeconds };
+            seconds.SetEnabled(draft.timedMode);
+            seconds.RegisterValueChangedCallback(evt => { PushUndo(); draft.timeLimitSeconds = evt.newValue; RefreshStatus(); QueueAutosave(); });
+            fields.Add(seconds);
+            foreach (var threshold in new[] {
+                Tuple.Create("1-star threshold", 1), Tuple.Create("2-star threshold", 2), Tuple.Create("3-star threshold", 3) })
+            {
+                int star = threshold.Item2;
+                var field = new IntegerField(threshold.Item1) { value = star == 1 ? draft.oneStarThreshold : star == 2 ? draft.twoStarThreshold : draft.threeStarThreshold };
+                field.RegisterValueChangedCallback(evt => {
+                    PushUndo();
+                    if (star == 1) draft.oneStarThreshold = evt.newValue;
+                    else if (star == 2) draft.twoStarThreshold = evt.newValue;
+                    else draft.threeStarThreshold = evt.newValue;
+                    RefreshStatus(); QueueAutosave();
+                });
+                fields.Add(field);
+            }
+            var difficulty = new TextField("Difficulty localization key") { value = draft.difficultyLabel };
+            difficulty.RegisterValueChangedCallback(evt => { PushUndo(); draft.difficultyLabel = evt.newValue; RefreshStatus(); QueueAutosave(); });
+            fields.Add(difficulty);
+            var hint = new TextField("Editor hint key") { value = draft.editorHintKey ?? string.Empty };
+            hint.RegisterValueChangedCallback(evt => { PushUndo(); draft.editorHintKey = string.IsNullOrWhiteSpace(evt.newValue) ? null : evt.newValue; RefreshStatus(); QueueAutosave(); });
+            fields.Add(hint);
             rootVisualElement.Add(fields);
 
             var gemTools = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap } };
@@ -108,6 +150,18 @@ namespace Match3Factory
             var capabilities = new Label(ProfileCapabilitySummary(draft.gameProfileId)) { name = "profile-capabilities" };
             capabilities.style.whiteSpace = WhiteSpace.Normal;
             rootVisualElement.Add(capabilities);
+            rootVisualElement.Add(new HelpBox("Neutral placeholder labels are used because title-specific art is not installed. This preview does not imply licensed asset availability.", HelpBoxMessageType.Info));
+
+            var browserHeader = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            browserHeader.Add(new Label("World / chapter / level browser"));
+            browserHeader.Add(MakeButton("Refresh browser", BuildLevelBrowser));
+            rootVisualElement.Add(browserHeader);
+            levelSearch = new TextField("Filter profile/world/chapter/level");
+            levelSearch.RegisterValueChangedCallback(_ => BuildLevelBrowser());
+            rootVisualElement.Add(levelSearch);
+            levelBrowser = new VisualElement { name = "level-browser" };
+            rootVisualElement.Add(levelBrowser);
+            BuildLevelBrowser();
 
             var goalsHeader = new VisualElement { style = { flexDirection = FlexDirection.Row } };
             goalsHeader.Add(new Label("Goals"));
@@ -131,6 +185,7 @@ namespace Match3Factory
             var sampleActions = new VisualElement { style = { flexDirection = FlexDirection.Row } };
             sampleActions.Add(MakeButton("Import LevelSO", ImportSampleLevel));
             sampleActions.Add(MakeButton("Save to LevelSO", ExportSampleLevel));
+            sampleActions.Add(MakeButton("Copy board from JSON", CopyBoardFromJson));
             rootVisualElement.Add(sampleActions);
 
             status = new Label();
@@ -312,10 +367,71 @@ namespace Match3Factory
 
         private void SaveDraft()
         {
-            string path = EditorUtility.SaveFilePanel("Save LevelDraft JSON", Application.dataPath, "level-draft", "json");
+            string levelFolder = Path.Combine(Application.dataPath, "Match3Factory", "Levels");
+            Directory.CreateDirectory(levelFolder);
+            string path = EditorUtility.SaveFilePanel("Save LevelDraft JSON", levelFolder, draft.levelId, "json");
             if (string.IsNullOrEmpty(path)) return;
+            if (File.Exists(path) && !EditorUtility.DisplayDialog("Replace existing draft?",
+                    "The selected file already exists. Replace its contents with this validated LevelDraft?", "Replace", "Cancel")) return;
+            var existing = new System.Collections.Generic.List<LevelDraft>();
+            if (Directory.Exists(levelFolder))
+            foreach (string existingPath in Directory.GetFiles(levelFolder, "*.json", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var existingDraft = LevelDraftJson.Parse(File.ReadAllText(existingPath));
+                    if (!string.Equals(Path.GetFullPath(existingPath), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase)) existing.Add(existingDraft);
+                }
+                catch { /* Invalid artifacts are surfaced individually by the browser and cannot become registry authority. */ }
+            }
+            existing.Add(draft);
+            var identityErrors = LevelDraftRegistry.ValidateUnique(existing);
+            if (identityErrors.Count != 0)
+            {
+                EditorUtility.DisplayDialog("Duplicate level identity", string.Join("\n", identityErrors), "OK");
+                return;
+            }
             try { File.WriteAllText(path, LevelDraftJson.Serialize(draft)); RefreshStatus(); }
             catch (Exception ex) { EditorUtility.DisplayDialog("Draft was not saved", ex.Message, "OK"); }
+        }
+
+        private void BuildLevelBrowser()
+        {
+            if (levelBrowser == null) return;
+            levelBrowser.Clear();
+            string folder = Path.Combine(Application.dataPath, "Match3Factory", "Levels");
+            if (!Directory.Exists(folder))
+            {
+                levelBrowser.Add(new Label("No saved LevelDrafts yet. Save a draft into Assets/Match3Factory/Levels."));
+                return;
+            }
+            var entries = new System.Collections.Generic.List<Tuple<string, LevelDraft>>();
+            foreach (string path in Directory.GetFiles(folder, "*.json", SearchOption.AllDirectories).Take(500))
+            {
+                try { entries.Add(Tuple.Create(path, LevelDraftJson.Parse(File.ReadAllText(path)))); }
+                catch (Exception ex) { entries.Add(Tuple.Create(path, (LevelDraft)null)); Debug.LogWarning("Ignored invalid LevelDraft in browser: " + Path.GetFileName(path) + " · " + ex.Message); }
+            }
+            var valid = entries.Where(entry => entry.Item2 != null).Select(entry => entry.Item2).ToArray();
+            var duplicates = new HashSet<string>(LevelDraftRegistry.ValidateUnique(valid).Select(error => error.Substring(error.IndexOf(": ", StringComparison.Ordinal) + 2)), StringComparer.Ordinal);
+            string filter = levelSearch == null ? string.Empty : levelSearch.value ?? string.Empty;
+            int shown = 0;
+            foreach (var entry in entries)
+            {
+                string title = entry.Item2 == null ? Path.GetFileName(entry.Item1) + " · INVALID" :
+                    $"{entry.Item2.gameProfileId} / {entry.Item2.worldId} / {entry.Item2.chapterId} / {entry.Item2.levelId}";
+                if (title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                var draftAtPath = entry.Item2;
+                var button = new Button(() =>
+                {
+                    if (draftAtPath == null) { EditorUtility.DisplayDialog("Invalid LevelDraft", "This JSON did not pass the strict parser.", "OK"); return; }
+                    PushUndo(); draft = draftAtPath.Clone(); Refresh();
+                }) { text = title };
+                button.tooltip = entry.Item2 != null && duplicates.Contains(LevelDraftRegistry.Key(entry.Item2))
+                    ? "Duplicate profile/world/chapter/level identity; resolve before save."
+                    : entry.Item1;
+                levelBrowser.Add(button); shown++;
+            }
+            if (shown == 0) levelBrowser.Add(new Label("No levels match this filter."));
         }
 
         private void ValidateDraft()
@@ -331,6 +447,21 @@ namespace Match3Factory
             if (source == null) { EditorUtility.DisplayDialog("Select a LevelSO", "Choose a Unity sample LevelSO asset first.", "OK"); return; }
             try { PushUndo(); draft = LevelDraftUnitySampleAdapter.FromLevelSO(source, draft.gameProfileId, draft.seed); Refresh(); }
             catch (Exception ex) { EditorUtility.DisplayDialog("LevelSO import failed", ex.Message, "OK"); }
+        }
+
+        private void CopyBoardFromJson()
+        {
+            string path = EditorUtility.OpenFilePanel("Copy board geometry from LevelDraft", "Assets/Match3Factory/Levels", "json");
+            if (string.IsNullOrEmpty(path)) return;
+            try
+            {
+                var source = LevelDraftJson.Parse(File.ReadAllText(path));
+                string error;
+                if (!LevelDraftRegistry.TryCopyBoard(source, draft, out error))
+                    EditorUtility.DisplayDialog("Board copy rejected", error, "OK");
+                else { PushUndo(); Refresh(); QueueAutosave(); }
+            }
+            catch (Exception ex) { EditorUtility.DisplayDialog("Board copy failed", ex.Message, "OK"); }
         }
 
         private void ExportSampleLevel()
@@ -362,7 +493,7 @@ namespace Match3Factory
         {
             var profile = GameProfileCatalog.Get(profileId);
             if (profile == null) return "Unknown profile: all capabilities disabled.";
-            return $"Profile v{profile.Version} · {profile.AudiencePolicy} · enabled: {string.Join(", ", profile.EnabledCapabilities)} · advanced mechanics disabled until ENG-M24: {string.Join(", ", profile.DisabledCapabilities)}";
+            return $"{profile.DisplayName} · profile v{profile.Version} · {profile.AudiencePolicy} · {profile.NeutralFallbackLabel} · enabled: {string.Join(", ", profile.EnabledCapabilities)} · advanced mechanics disabled until ENG-M24: {string.Join(", ", profile.DisabledCapabilities)}";
         }
 
         private static string AutosavePath => Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Library", "Match3Factory", "autosave-v1.json");

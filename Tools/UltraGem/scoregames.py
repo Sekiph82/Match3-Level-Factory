@@ -77,7 +77,7 @@ def scoring_function(events: list[tuple[str, int]]) -> list[int]:
     return [score, destroyed, unlocked] + nspecial + combos
 
 
-def create_scenario(nrows: int, ncols: int, ncolors: int, seed: int):
+def _create_scenario_unscoped(nrows: int, ncols: int, ncolors: int, seed: int):
     """Keep UltraGem's original weighted blocker and special placement."""
     rng = numpy.random.RandomState(seed)
     board = Board(nrows=nrows, ncols=ncols)
@@ -104,6 +104,16 @@ def create_scenario(nrows: int, ncols: int, ncolors: int, seed: int):
             board, nrows=int(disabled_rows), ncols=int(disabled_cols), rng=rng
         ).run()
     return board, NastyTopFiller(board, ncolors=ncolors)
+
+
+def create_scenario(nrows: int, ncols: int, ncolors: int, seed: int):
+    """Create one candidate with UltraGem's full legacy RNG stream isolated."""
+    previous_state = numpy.random.get_state()
+    try:
+        numpy.random.seed(seed)
+        return _create_scenario_unscoped(nrows, ncols, ncolors, seed)
+    finally:
+        numpy.random.set_state(previous_state)
 
 
 def _simulate_one(board: Board, topfill, selector: Callable, policy: str, run_seed: int,
@@ -165,8 +175,8 @@ def _simulate_one(board: Board, topfill, selector: Callable, policy: str, run_se
     return RunResult(policy, run_seed, moves, shuffles, outcome, step_scores[:max_moves])
 
 
-def evaluate_candidate(rows: int, columns: int, colors: int, seed: int, runs: int,
-                       max_moves: int) -> dict:
+def _evaluate_candidate_unscoped(rows: int, columns: int, colors: int, seed: int, runs: int,
+                                 max_moves: int) -> dict:
     if not (6 <= rows <= 12 and 6 <= columns <= 12):
         raise ValueError("board dimensions must each be between 6 and 12")
     if not 3 <= colors <= 6:
@@ -208,6 +218,20 @@ def evaluate_candidate(rows: int, columns: int, colors: int, seed: int, runs: in
             for policy, results in policy_runs.items()
         },
     }
+
+
+def evaluate_candidate(rows: int, columns: int, colors: int, seed: int, runs: int,
+                       max_moves: int) -> dict:
+    """Run the pinned donor algorithms under one isolated, reproducible RNG stream."""
+    previous_state = numpy.random.get_state()
+    try:
+        # UltraGem contains legacy calls through both its supplied RandomState
+        # and NumPy's module-level RNG. Seed the latter before scenario creation
+        # as well as before each simulation, then restore the caller's stream.
+        numpy.random.seed(seed)
+        return _evaluate_candidate_unscoped(rows, columns, colors, seed, runs, max_moves)
+    finally:
+        numpy.random.set_state(previous_state)
 
 
 def _board_payload(board: Board) -> dict:

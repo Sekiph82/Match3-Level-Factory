@@ -25,6 +25,13 @@ namespace Match3Factory
         public int layers = 1;
         public bool[] activeMask = Array.Empty<bool>();
         public int moveBudget = 20;
+        public bool timedMode;
+        public int timeLimitSeconds;
+        public int oneStarThreshold = 1;
+        public int twoStarThreshold = 2;
+        public int threeStarThreshold = 3;
+        public string difficultyLabel = "difficulty.unrated";
+        public string editorHintKey;
         public CellDraft[] cells = Array.Empty<CellDraft>();
         public GoalDraft[] goals = Array.Empty<GoalDraft>();
         public string engineSchemaVersion;
@@ -49,6 +56,12 @@ namespace Match3Factory
             if (layers < 1 || layers > 4) errors.Add("layers must be between 1 and 4.");
             if (seed < 0) errors.Add("seed must be a non-negative signed 64-bit integer.");
             if (moveBudget < 1 || moveBudget > 999) errors.Add("moveBudget must be between 1 and 999.");
+            if (timedMode ? timeLimitSeconds < 1 || timeLimitSeconds > 3600 : timeLimitSeconds != 0)
+                errors.Add("timeLimitSeconds must be 1..3600 for timed levels and 0 otherwise.");
+            if (oneStarThreshold < 0 || oneStarThreshold > 99999 || twoStarThreshold < oneStarThreshold || twoStarThreshold > 99999 || threeStarThreshold < twoStarThreshold || threeStarThreshold > 99999)
+                errors.Add("Star thresholds must be ascending values in 0..99999.");
+            if (!IsStableId(difficultyLabel) || (!string.IsNullOrEmpty(editorHintKey) && !IsStableId(editorHintKey)))
+                errors.Add("difficultyLabel and editorHintKey must be stable localization keys.");
             if (cells == null) errors.Add("cells is required.");
             else
             {
@@ -141,6 +154,7 @@ namespace Match3Factory
             if (string.IsNullOrEmpty(clone.sourceRepository)) clone.sourceRepository = null;
             if (string.IsNullOrEmpty(clone.sourceRevision)) clone.sourceRevision = null;
             if (string.IsNullOrEmpty(clone.sourceKind)) clone.sourceKind = null;
+            if (string.IsNullOrEmpty(clone.editorHintKey)) clone.editorHintKey = null;
             return clone;
         }
 

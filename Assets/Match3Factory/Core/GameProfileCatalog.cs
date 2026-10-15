@@ -7,20 +7,17 @@ namespace Match3Factory
     public sealed class GameProfileDefinition
     {
         public string Id { get; internal set; }
+        public string DisplayName { get; internal set; }
         public int Version { get; internal set; }
         public string AudiencePolicy { get; internal set; }
+        public string NeutralFallbackLabel { get; internal set; }
         public HashSet<string> EnabledCapabilities { get; internal set; }
         public HashSet<string> DisabledCapabilities { get; internal set; }
     }
 
-    /// <summary>Conservative local profile registry. Advanced mechanics remain disabled until Engine parity is accepted.</summary>
+    /// <summary>Conservative versioned profiles. Every profile stays reference-only until Engine parity is accepted.</summary>
     public static class GameProfileCatalog
     {
-        private static readonly string[] ProfileIds =
-        {
-            "Coral_Rescue", "Garage_Legends", "Dino_Islands", "The_Fractured_Realms", "Wonder_Pop"
-        };
-
         private static readonly string[] AdvancedCapabilities =
         {
             "piece.weighted", "piece.scripted", "piece.anchored", "obstacle.immobilizer",
@@ -29,20 +26,17 @@ namespace Match3Factory
             "special.egg", "special.swirl", "goal.ingredient", "goal.timer", "liveops.ads",
             "liveops.social", "liveops.loot", "analytics.behavioral"
         };
+        private static readonly string[] BasicCapabilities = { "piece.color.basic", "goal.score", "goal.sample.glass" };
+        private static readonly GameProfileDefinition[] Definitions = BuildDefinitions();
+        private static readonly Dictionary<string, GameProfileDefinition> ById = BuildIndex(Definitions);
 
-        public static IReadOnlyList<string> AllProfileIds => ProfileIds;
+        public static IReadOnlyList<string> AllProfileIds => Definitions.Select(profile => profile.Id).ToArray();
 
         public static GameProfileDefinition Get(string id)
         {
-            if (!ProfileIds.Contains(id, StringComparer.Ordinal)) return null;
-            return new GameProfileDefinition
-            {
-                Id = id,
-                Version = 1,
-                AudiencePolicy = id == "Wonder_Pop" ? "CHILD_SAFE_RESTRICTED" : "UNCLASSIFIED_NO_LIVEOPS",
-                EnabledCapabilities = new HashSet<string>(new[] { "piece.color.basic", "goal.score", "goal.sample.glass" }, StringComparer.Ordinal),
-                DisabledCapabilities = new HashSet<string>(AdvancedCapabilities, StringComparer.Ordinal)
-            };
+            GameProfileDefinition value;
+            if (id == null || !ById.TryGetValue(id, out value)) return null;
+            return Copy(value);
         }
 
         public static List<string> ValidateDraft(LevelDraft draft)
@@ -67,5 +61,41 @@ namespace Match3Factory
                     errors.Add($"Profile {profile.Id} does not enable goal '{goal.targetId}'.");
             return errors;
         }
+
+        public static bool HasUniqueIds(IEnumerable<GameProfileDefinition> profiles)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            return profiles != null && profiles.All(profile => profile != null && !string.IsNullOrWhiteSpace(profile.Id) && ids.Add(profile.Id));
+        }
+
+        private static GameProfileDefinition[] BuildDefinitions()
+        {
+            var names = new[] { "Coral Rescue", "Garage Legends", "Dino Islands", "The Fractured Realms", "Wonder Pop" };
+            var ids = new[] { "Coral_Rescue", "Garage_Legends", "Dino_Islands", "The_Fractured_Realms", "Wonder_Pop" };
+            return ids.Select((id, index) => new GameProfileDefinition
+            {
+                Id = id,
+                DisplayName = names[index],
+                Version = 1,
+                AudiencePolicy = id == "Wonder_Pop" ? "CHILD_SAFE_RESTRICTED" : "UNCLASSIFIED_NO_LIVEOPS",
+                NeutralFallbackLabel = "Neutral placeholder · title art unavailable",
+                EnabledCapabilities = new HashSet<string>(BasicCapabilities, StringComparer.Ordinal),
+                DisabledCapabilities = new HashSet<string>(AdvancedCapabilities, StringComparer.Ordinal)
+            }).ToArray();
+        }
+
+        private static Dictionary<string, GameProfileDefinition> BuildIndex(GameProfileDefinition[] profiles)
+        {
+            if (!HasUniqueIds(profiles)) throw new InvalidOperationException("Game profile IDs must be unique and non-empty.");
+            return profiles.ToDictionary(profile => profile.Id, profile => profile, StringComparer.Ordinal);
+        }
+
+        private static GameProfileDefinition Copy(GameProfileDefinition profile) => new GameProfileDefinition
+        {
+            Id = profile.Id, DisplayName = profile.DisplayName, Version = profile.Version,
+            AudiencePolicy = profile.AudiencePolicy, NeutralFallbackLabel = profile.NeutralFallbackLabel,
+            EnabledCapabilities = new HashSet<string>(profile.EnabledCapabilities, StringComparer.Ordinal),
+            DisabledCapabilities = new HashSet<string>(profile.DisabledCapabilities, StringComparer.Ordinal)
+        };
     }
 }

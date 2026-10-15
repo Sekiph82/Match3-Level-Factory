@@ -8,7 +8,7 @@ namespace Match3Factory
 {
     public static class LevelDraftJson
     {
-        private static readonly string[] DraftKeys = { "draftVersion", "validationStatus", "gameProfileId", "profileVersion", "worldId", "chapterId", "levelId", "releaseChannel", "platform", "locale", "minEngineVersion", "maxEngineVersion", "seed", "width", "height", "layers", "activeMask", "moveBudget", "cells", "goals", "engineSchemaVersion", "sourceRepository", "sourceRevision", "sourceKind" };
+        private static readonly string[] DraftKeys = { "draftVersion", "validationStatus", "gameProfileId", "profileVersion", "worldId", "chapterId", "levelId", "releaseChannel", "platform", "locale", "minEngineVersion", "maxEngineVersion", "seed", "width", "height", "layers", "activeMask", "moveBudget", "timedMode", "timeLimitSeconds", "oneStarThreshold", "twoStarThreshold", "threeStarThreshold", "difficultyLabel", "editorHintKey", "cells", "goals", "engineSchemaVersion", "sourceRepository", "sourceRevision", "sourceKind" };
         private static readonly string[] CellKeys = { "row", "column", "layer", "active", "locked", "contentId", "obstacleId", "obstacleDurability", "lockDurability", "specialId" };
         private static readonly string[] GoalKeys = { "goalId", "targetId", "targetCount" };
 
@@ -42,9 +42,12 @@ namespace Match3Factory
             RequireInteger(root, "draftVersion"); RequireInteger(root, "seed");
             RequireInteger(root, "profileVersion");
             RequireInteger(root, "width"); RequireInteger(root, "height"); RequireInteger(root, "layers"); RequireInteger(root, "moveBudget");
+            RequireBoolean(root, "timedMode"); RequireInteger(root, "timeLimitSeconds");
+            RequireInteger(root, "oneStarThreshold"); RequireInteger(root, "twoStarThreshold"); RequireInteger(root, "threeStarThreshold");
             RequireString(root, "validationStatus"); RequireString(root, "gameProfileId");
             RequireString(root, "worldId"); RequireString(root, "chapterId"); RequireString(root, "levelId");
             RequireString(root, "releaseChannel"); RequireString(root, "platform"); RequireString(root, "locale");
+            RequireString(root, "difficultyLabel"); RequireNullableString(root, "editorHintKey");
             RequireNullableString(root, "minEngineVersion"); RequireNullableString(root, "maxEngineVersion");
             RequireNullableString(root, "engineSchemaVersion"); RequireNullableString(root, "sourceRepository"); RequireNullableString(root, "sourceRevision"); RequireNullableString(root, "sourceKind");
             var mask = root["activeMask"] as List<object>;
@@ -79,6 +82,7 @@ namespace Match3Factory
                 if (string.IsNullOrEmpty(cell.obstacleId)) cell.obstacleId = null;
                 if (string.IsNullOrEmpty(cell.specialId)) cell.specialId = null;
             }
+            if (string.IsNullOrEmpty(draft.editorHintKey)) draft.editorHintKey = null;
             var errors = draft.Validate();
             if (errors.Count != 0) throw new InvalidOperationException(string.Join(" ", errors));
             return draft.Canonicalized();
@@ -107,6 +111,13 @@ namespace Match3Factory
             Property(b, "activeMask"); b.Append('[');
             for (int i = 0; i < draft.activeMask.Length; i++) { if (i > 0) b.Append(','); b.Append(draft.activeMask[i] ? "true" : "false"); }
             b.Append("],"); Property(b, "moveBudget"); b.Append(draft.moveBudget.ToString(CultureInfo.InvariantCulture)); b.Append(',');
+            Property(b, "timedMode"); b.Append(draft.timedMode ? "true" : "false"); b.Append(',');
+            Property(b, "timeLimitSeconds"); b.Append(draft.timeLimitSeconds.ToString(CultureInfo.InvariantCulture)); b.Append(',');
+            Property(b, "oneStarThreshold"); b.Append(draft.oneStarThreshold.ToString(CultureInfo.InvariantCulture)); b.Append(',');
+            Property(b, "twoStarThreshold"); b.Append(draft.twoStarThreshold.ToString(CultureInfo.InvariantCulture)); b.Append(',');
+            Property(b, "threeStarThreshold"); b.Append(draft.threeStarThreshold.ToString(CultureInfo.InvariantCulture)); b.Append(',');
+            Property(b, "difficultyLabel"); StringValue(b, draft.difficultyLabel); b.Append(',');
+            Property(b, "editorHintKey"); NullableString(b, draft.editorHintKey); b.Append(',');
             Property(b, "cells"); b.Append('[');
             for (int i = 0; i < draft.cells.Length; i++)
             {
@@ -188,7 +199,11 @@ namespace Match3Factory
         private sealed class JsonInteger { public readonly long Value; public JsonInteger(long value) { Value = value; } }
         private sealed class StrictJsonReader
         {
+            private const int MaxDepth = 64;
+            private const int MaxElements = 65536;
             private readonly string text; private int index;
+            private int depth;
+            private int elements;
             private StrictJsonReader(string text) { this.text = text; }
             public static object Parse(string text)
             {
@@ -198,6 +213,7 @@ namespace Match3Factory
             }
             private object Value()
             {
+                if (++elements > MaxElements) throw Error("JSON element budget exceeded (maximum 65536 values).");
                 Space(); if (index >= text.Length) throw Error("Expected a JSON value.");
                 char c = text[index];
                 if (c == '{') return Object(); if (c == '[') return Array(); if (c == '"') return String();
@@ -207,20 +223,35 @@ namespace Match3Factory
             }
             private Dictionary<string, object> Object()
             {
-                index++; Space(); var result = new Dictionary<string, object>(StringComparer.Ordinal);
-                if (Take('}')) return result;
-                while (true)
+                EnterContainer();
+                try
                 {
-                    Space(); if (index >= text.Length || text[index] != '"') throw Error("Object key must be a string.");
-                    string key = String(); Space(); Need(':'); object value = Value();
-                    if (result.ContainsKey(key)) throw Error("Duplicate JSON key: " + key);
-                    result.Add(key, value); Space(); if (Take('}')) return result; Need(',');
+                    index++; Space(); var result = new Dictionary<string, object>(StringComparer.Ordinal);
+                    if (Take('}')) return result;
+                    while (true)
+                    {
+                        Space(); if (index >= text.Length || text[index] != '"') throw Error("Object key must be a string.");
+                        string key = String(); Space(); Need(':'); object value = Value();
+                        if (result.ContainsKey(key)) throw Error("Duplicate JSON key: " + key);
+                        result.Add(key, value); Space(); if (Take('}')) return result; Need(',');
+                    }
                 }
+                finally { depth--; }
             }
             private List<object> Array()
             {
-                index++; Space(); var result = new List<object>(); if (Take(']')) return result;
-                while (true) { result.Add(Value()); Space(); if (Take(']')) return result; Need(','); }
+                EnterContainer();
+                try
+                {
+                    index++; Space(); var result = new List<object>(); if (Take(']')) return result;
+                    while (true) { result.Add(Value()); Space(); if (Take(']')) return result; Need(','); }
+                }
+                finally { depth--; }
+            }
+            private void EnterContainer()
+            {
+                if (depth >= MaxDepth) throw Error("JSON nesting depth exceeds the maximum of 64.");
+                depth++;
             }
             private string String()
             {
