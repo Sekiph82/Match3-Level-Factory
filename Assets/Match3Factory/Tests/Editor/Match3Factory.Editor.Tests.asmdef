@@ -3,9 +3,15 @@
   "rootNamespace": "Match3Factory.Tests",
   "references": [
     "Match3Factory.Editor",
+    "Match3Factory.Core",
+    "Match3Factory.SDKBridge",
     "Match3.Reference"
   ],
-  "includePlatforms": ["Editor"],
-  "optionalUnityReferences": ["TestAssemblies"],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
   "autoReferenced": false
 }

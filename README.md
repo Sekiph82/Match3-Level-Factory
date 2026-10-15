@@ -6,6 +6,11 @@ bounded Python 3 UltraGem reference pipeline. All generated drafts are marked
 `PROTOTYPE_ONLY`; MATCH3_ENGINE is the sole authority for final rules and
 validation.
 
+The prototype adapter pins and calls the existing LibraStack SDK board-solver
+and horizontal/vertical line-detector APIs for plain one-layer pieces. It
+rejects semantics those APIs cannot currently represent. Results remain
+reference-only while the Engine package and ENG-M24 acceptance are pending.
+
 Open the project root in Unity and choose **Tools → Match3 Factory → Level Draft
 Studio**. The window can paint a single-layer board, holes and glass, validate,
 undo/redo, save/open LevelDraft JSON, and import/export supported sample

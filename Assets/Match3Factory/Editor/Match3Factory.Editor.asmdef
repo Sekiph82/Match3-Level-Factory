@@ -2,6 +2,7 @@
   "name": "Match3Factory.Editor",
   "rootNamespace": "Match3Factory",
   "references": [
+    "Match3Factory.Core",
     "Match3.Reference"
   ],
   "includePlatforms": [

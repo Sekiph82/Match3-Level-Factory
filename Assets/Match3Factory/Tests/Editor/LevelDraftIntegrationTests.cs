@@ -147,6 +147,41 @@ namespace Match3Factory.Tests
             Assert.That(draft.Validate().Any(error => error.Contains("Engine schema is unavailable")), Is.True);
         }
 
+        [Test]
+        public void PinnedSdkAdapterUsesTheEngineSolverForAPlainBoard()
+        {
+            var draft = new LevelDraft
+            {
+                width = 3,
+                height = 3,
+                activeMask = Enumerable.Repeat(true, 9).ToArray(),
+                cells = new[]
+                {
+                    SdkCell(0, 0, "A"), SdkCell(0, 1, "A"), SdkCell(0, 2, "B"),
+                    SdkCell(1, 0, "B"), SdkCell(1, 1, "A"), SdkCell(1, 2, "A"),
+                    SdkCell(2, 0, "B"), SdkCell(2, 1, "A"), SdkCell(2, 2, "B")
+                },
+                goals = new[] { new GoalDraft { goalId = "goal.primary", targetId = "sample.score", targetCount = 1 } }
+            };
+            var adapter = new Match3SdkLevelDraftAdapter(id => id == "A" ? 1 : 2);
+            var result = adapter.AnalyzeLegalSwaps(draft);
+            Assert.That(result.resultStatus, Is.EqualTo("SDK_REFERENCE_ONLY"));
+            Assert.That(result.engineStatus, Is.EqualTo("BLOCKED_ENG_M24"));
+            Assert.That(result.legalSwapCandidates.Any(move =>
+                move.startRow == 0 && move.startColumn == 2 && move.endRow == 1 && move.endColumn == 2), Is.True);
+            Assert.That(result.legalSwapCandidates.Any(move => move.matchedSlotCount >= 3), Is.True);
+        }
+
+        [Test]
+        public void PinnedSdkAdapterRejectsSemanticsOutsideItsCurrentContract()
+        {
+            var draft = NewDraft();
+            draft.cells[0].obstacleId = "sample.glass";
+            draft.cells[0].obstacleDurability = 1;
+            var adapter = new Match3SdkLevelDraftAdapter(_ => 1);
+            Assert.Throws<System.NotSupportedException>(() => adapter.AnalyzeLegalSwaps(draft));
+        }
+
         private static LevelDraft NewDraft()
         {
             return new LevelDraft
@@ -163,6 +198,11 @@ namespace Match3Factory.Tests
                 },
                 goals = new[] { new GoalDraft { goalId = "goal.primary", targetId = "sample.score", targetCount = 500 } }
             };
+        }
+
+        private static CellDraft SdkCell(int row, int column, string itemId)
+        {
+            return new CellDraft { row = row, column = column, layer = 0, active = true, contentId = itemId };
         }
 
         private static void SetPrivateField(object instance, string fieldName, object value)
