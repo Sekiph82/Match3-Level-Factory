@@ -13,6 +13,7 @@ namespace Match3Factory
     {
         private static readonly string[] Profiles = GameProfileCatalog.AllProfileIds.ToArray();
         private static readonly string[] GemIds = { "Blue", "Green", "Orange", "Purple", "White", "Yellow" };
+        private static Func<string> autosavePathOverrideForTesting;
         private LevelDraft draft;
         private VisualElement board;
         private ScrollView boardScroll;
@@ -540,7 +541,9 @@ namespace Match3Factory
             return $"{profile.DisplayName} · profile v{profile.Version} · {profile.AudiencePolicy} · {profile.NeutralFallbackLabel} · enabled: {string.Join(", ", profile.EnabledCapabilities)} · advanced mechanics disabled until ENG-M24: {string.Join(", ", profile.DisabledCapabilities)}";
         }
 
-        private static string AutosavePath => Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Library", "Match3Factory", "autosave-v1.json");
+        private static string AutosavePath => autosavePathOverrideForTesting != null
+            ? autosavePathOverrideForTesting()
+            : Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Library", "Match3Factory", "autosave-v1.json");
 
         private void QueueAutosave()
         {

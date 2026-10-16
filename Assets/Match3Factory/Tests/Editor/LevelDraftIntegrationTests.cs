@@ -198,6 +198,36 @@ namespace Match3Factory.Tests
         }
 
         [Test]
+        public void DraftStudioRestoresSavedAutosaveOnEditorWindowReopen()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "Match3FactoryStudioRestore-" + System.Guid.NewGuid().ToString("N"), "autosave-v1.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var expected = NewDraft(); expected.seed = 712;
+            LevelDraftAutosaveStore.Save(path, expected);
+
+            var window = ScriptableObject.CreateInstance<LevelDraftStudioWindow>();
+            var type = typeof(LevelDraftStudioWindow);
+            var overrideField = type.GetField("autosavePathOverrideForTesting", BindingFlags.Static | BindingFlags.NonPublic);
+            var previousOverride = overrideField.GetValue(null);
+            try
+            {
+                overrideField.SetValue(null, new System.Func<string>(() => path));
+                type.GetField("autosaveQueued", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(window, true);
+                window.CreateGUI();
+                var restored = (LevelDraft)type.GetField("draft", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(window);
+                Assert.That(restored, Is.Not.Null);
+                Assert.That(restored.seed, Is.EqualTo(712));
+                Assert.That(LevelDraftJson.Sha256(restored), Is.EqualTo(LevelDraftJson.Sha256(expected)));
+            }
+            finally
+            {
+                type.GetField("draft", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(window, null);
+                overrideField.SetValue(null, previousOverride);
+                UnityEngine.Object.DestroyImmediate(window);
+            }
+        }
+
+        [Test]
         public void DraftStudioShowsEveryCompositeGoalForEditing()
         {
             var window = ScriptableObject.CreateInstance<LevelDraftStudioWindow>();
