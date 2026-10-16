@@ -323,6 +323,25 @@ namespace Match3Factory.Tests
         }
 
         [Test]
+        public void GridResizePreservesIntersectingCellsAcrossLayersAndRebuildsMask()
+        {
+            var draft = NewDraft();
+            draft.cells[0].locked = true;
+            draft.cells[0].lockDurability = 1;
+            LevelDraftGridOperations.Resize(draft, 3, 2, 2);
+            Assert.That(draft.cells.Length, Is.EqualTo(12));
+            Assert.That(draft.activeMask.Length, Is.EqualTo(12));
+            Assert.That(draft.cells.Single(cell => cell.layer == 0 && cell.row == 0 && cell.column == 0).locked, Is.True);
+            Assert.That(draft.cells.Single(cell => cell.layer == 1 && cell.row == 1 && cell.column == 1).contentId, Is.EqualTo("Blue"));
+            var newHole = draft.cells.Single(cell => cell.layer == 1 && cell.row == 0 && cell.column == 1);
+            newHole.active = false;
+            newHole.contentId = null;
+            LevelDraftGridOperations.Resize(draft, 3, 2, 2);
+            Assert.That(draft.activeMask[LevelDraftGridOperations.Index(3, 2, 0, 1, 1)], Is.False);
+            Assert.That(draft.Validate(), Is.Empty);
+        }
+
+        [Test]
         public void CSharpCanonicalJsonMatchesTheSharedPythonGoldenFixture()
         {
             string fixturePath = Path.Combine(Application.dataPath, "Match3Factory/Tests/Fixtures/leveldraft_v1_unicode.json");
@@ -330,6 +349,39 @@ namespace Match3Factory.Tests
             var parsed = LevelDraftJson.Parse(expected);
             Assert.That(LevelDraftJson.Serialize(parsed), Is.EqualTo(expected));
             Assert.That(LevelDraftJson.Sha256(parsed), Is.EqualTo("3b1c25dbb8636ec84c7ae0eec19df7d6d9bfa777a2a18a3a3384eb8307a308b7"));
+        }
+
+        [Test]
+        public void ActualUltraGemSeed712DraftMatchesPublishedPythonHashAndRoundTripsInCSharp()
+        {
+            string fixturePath = Path.Combine(Application.dataPath, "Match3Factory/Tests/Fixtures/ultragem_seed_712_draft.json");
+            string evidencePath = Path.Combine(Application.dataPath, "Match3Factory/Tests/Fixtures/ultragem_seed_712_evidence.json");
+            string source = File.ReadAllText(fixturePath, System.Text.Encoding.UTF8).TrimStart('\uFEFF', '\r', '\n');
+            var evidence = UnityEngine.JsonUtility.FromJson<UltraGemFixtureEvidence>(File.ReadAllText(evidencePath, System.Text.Encoding.UTF8));
+            var parsed = LevelDraftJson.Parse(source);
+            Assert.That(LevelDraftJson.Sha256(parsed), Is.EqualTo(evidence.draftSha256));
+            Assert.That(evidence.sourceOutputSha256, Is.EqualTo("46e44c5ddbb6c8cf48fb372f4f939644b81608a7f457cb8d3e814f09d925e729"));
+            Assert.That(evidence.resultStatus, Is.EqualTo("REFERENCE_ONLY_UNVERIFIED"));
+            Assert.That(evidence.engineStatus, Is.EqualTo("BLOCKED_ENG_M24"));
+            Assert.That(evidence.localPolicyStatus, Is.EqualTo("REJECTED_BY_BUILDER_POLICY"));
+            Assert.That(evidence.draftMutationPerformed, Is.False);
+            Assert.That(LevelDraftJson.Serialize(parsed), Is.EqualTo(source.TrimEnd('\r', '\n')));
+            Assert.That(parsed.validationStatus, Is.EqualTo("PROTOTYPE_ONLY"));
+            Assert.That(parsed.engineSchemaVersion, Is.Null);
+            Assert.That(parsed.cells.Count(cell => cell.locked), Is.EqualTo(32));
+            Assert.That(parsed.cells.Count(cell => !string.IsNullOrEmpty(cell.specialId)), Is.EqualTo(32));
+            Assert.That(parsed.goals.Length, Is.EqualTo(1));
+        }
+
+        [System.Serializable]
+        private sealed class UltraGemFixtureEvidence
+        {
+            public string sourceOutputSha256;
+            public string draftSha256;
+            public string resultStatus;
+            public string engineStatus;
+            public string localPolicyStatus;
+            public bool draftMutationPerformed;
         }
 
         [Test]

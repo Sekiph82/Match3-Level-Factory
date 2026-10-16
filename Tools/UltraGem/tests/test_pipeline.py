@@ -191,6 +191,33 @@ class LevelDraftTests(unittest.TestCase):
         self.assertEqual(leveldraft.dumps_canonical(draft), encoded)
         self.assertEqual(leveldraft.sha256(draft), "3b1c25dbb8636ec84c7ae0eec19df7d6d9bfa777a2a18a3a3384eb8307a308b7")
 
+    def test_actual_ultragem_seed_712_draft_matches_shared_csharp_hash_fixture(self):
+        # Extracted unchanged from the ranked seed-712 output (full output SHA256:
+        # 46e44c5ddbb6c8cf48fb372f4f939644b81608a7f457cb8d3e814f09d925e729).
+        fixture = ROOT.parents[1] / "Assets" / "Match3Factory" / "Tests" / "Fixtures" / "ultragem_seed_712_draft.json"
+        evidence_path = ROOT.parents[1] / "Assets" / "Match3Factory" / "Tests" / "Fixtures" / "ultragem_seed_712_evidence.json"
+        encoded = fixture.read_text(encoding="utf-8").lstrip("\ufeff").strip()
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        draft = leveldraft.loads_strict(encoded)
+        expected = "fffe76265e590a787b3e1284a2960b378c88df3f0f5260f3d10faf639d5c794d"
+        self.assertEqual(leveldraft.dumps_canonical(draft), encoded)
+        self.assertEqual(leveldraft.sha256(draft), expected)
+        self.assertEqual(draft["seed"], 712)
+        self.assertEqual(draft["sourceRepository"], "JohannesBuchner/ultragem")
+        self.assertEqual(draft["sourceRevision"], "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12")
+        self.assertEqual(draft["sourceKind"], "UltraGemCandidate+RankedGoal")
+        self.assertEqual(sum(cell["locked"] for cell in draft["cells"]), 32)
+        self.assertEqual(sum(bool(cell["specialId"]) for cell in draft["cells"]), 32)
+        self.assertEqual(len(draft["goals"]), 1)
+        self.assertIsNone(draft["engineSchemaVersion"])
+        self.assertEqual(draft["validationStatus"], "PROTOTYPE_ONLY")
+        self.assertEqual(evidence["sourceOutputSha256"], "46e44c5ddbb6c8cf48fb372f4f939644b81608a7f457cb8d3e814f09d925e729")
+        self.assertEqual(evidence["draftSha256"], expected)
+        self.assertEqual(evidence["resultStatus"], "REFERENCE_ONLY_UNVERIFIED")
+        self.assertEqual(evidence["engineStatus"], "BLOCKED_ENG_M24")
+        self.assertEqual(evidence["localPolicyStatus"], "REJECTED_BY_BUILDER_POLICY")
+        self.assertFalse(evidence["draftMutationPerformed"])
+
     def test_duplicate_json_keys_are_rejected(self):
         draft = leveldraft.from_ultragem(self.candidate())
         encoded = leveldraft.dumps_canonical(draft)

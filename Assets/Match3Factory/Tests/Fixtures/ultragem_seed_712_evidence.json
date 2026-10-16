@@ -1,0 +1,12 @@
+{
+  "seed": 712,
+  "sourceRepository": "JohannesBuchner/ultragem",
+  "sourceRevision": "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12",
+  "sourceOutputSha256": "46e44c5ddbb6c8cf48fb372f4f939644b81608a7f457cb8d3e814f09d925e729",
+  "draftSha256": "fffe76265e590a787b3e1284a2960b378c88df3f0f5260f3d10faf639d5c794d",
+  "resultStatus": "REFERENCE_ONLY_UNVERIFIED",
+  "engineStatus": "BLOCKED_ENG_M24",
+  "profileId": "Coral_Rescue",
+  "localPolicyStatus": "REJECTED_BY_BUILDER_POLICY",
+  "draftMutationPerformed": false
+}

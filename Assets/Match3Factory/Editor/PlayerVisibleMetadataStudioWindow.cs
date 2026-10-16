@@ -129,7 +129,7 @@ namespace Match3Factory
             string path = EditorUtility.SaveFilePanel("Save player metadata", "Assets/Match3Factory/Metadata", "campaign-metadata", "json");
             if (string.IsNullOrEmpty(path)) return;
             if (File.Exists(path) && !EditorUtility.DisplayDialog("Replace metadata?", "The selected JSON already exists. Replace it?", "Replace", "Cancel")) return;
-            try { File.WriteAllText(path, metadata.ToJson() + "\n", new System.Text.UTF8Encoding(false)); }
+            try { PlayerVisibleMetadataStore.Save(path, metadata); }
             catch (Exception ex) { EditorUtility.DisplayDialog("Save failed", ex.Message, "OK"); }
         }
     }

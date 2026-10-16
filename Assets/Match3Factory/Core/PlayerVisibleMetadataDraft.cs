@@ -10,6 +10,9 @@ namespace Match3Factory
     [Serializable]
     public sealed class PlayerVisibleMetadataDraft
     {
+        private static readonly string[] RootKeys = { "schemaVersion", "gameProfileId", "nextLevelTeaserKey", "chapterProgressLabelKey", "journeyLevelCount", "chestMilestones", "collectionItems", "expiryUtc", "expirySourceReference", "expiryDisclosureKey" };
+        private static readonly string[] MilestoneKeys = { "milestoneId", "atLevel", "starThreshold", "displayLabelKey" };
+        private static readonly string[] CollectionItemKeys = { "itemId", "packId", "displayLabelKey" };
         public int schemaVersion = 1;
         public string gameProfileId = "Coral_Rescue";
         public string nextLevelTeaserKey = "";
@@ -70,6 +73,14 @@ namespace Match3Factory
         {
             if (string.IsNullOrWhiteSpace(json) || System.Text.Encoding.UTF8.GetByteCount(json) > 256_000)
                 throw new ArgumentException("Player metadata JSON is empty or exceeds 256 KB.", nameof(json));
+            var root = StrictMetadataJsonReader.Parse(json) as Dictionary<string, object>;
+            if (root == null) throw new ArgumentException("Player metadata JSON root must be an object.", nameof(json));
+            RequireKeys(root, RootKeys, "player metadata");
+            RequireInteger(root, "schemaVersion"); RequireInteger(root, "journeyLevelCount");
+            RequireString(root, "gameProfileId"); RequireString(root, "nextLevelTeaserKey"); RequireString(root, "chapterProgressLabelKey");
+            RequireString(root, "expiryUtc"); RequireString(root, "expirySourceReference"); RequireString(root, "expiryDisclosureKey");
+            RequireArray(root, "chestMilestones", MilestoneKeys);
+            RequireArray(root, "collectionItems", CollectionItemKeys);
             var result = JsonUtility.FromJson<PlayerVisibleMetadataDraft>(json);
             if (result == null) throw new ArgumentException("Player metadata JSON is invalid.", nameof(json));
             var errors = result.Validate();
@@ -77,7 +88,148 @@ namespace Match3Factory
             return result;
         }
 
+        private static void RequireKeys(Dictionary<string, object> value, string[] required, string context)
+        {
+            var allowed = new HashSet<string>(required, StringComparer.Ordinal);
+            foreach (var key in value.Keys) if (!allowed.Contains(key)) throw new ArgumentException("Unknown " + context + " field: " + key + ".");
+            foreach (var key in required) if (!value.ContainsKey(key)) throw new ArgumentException("Missing " + context + " field: " + key + ".");
+        }
+
+        private static void RequireArray(Dictionary<string, object> root, string key, string[] itemKeys)
+        {
+            var values = root[key] as List<object>;
+            if (values == null) throw new ArgumentException(key + " must be an array.");
+            foreach (var item in values)
+            {
+                var fields = item as Dictionary<string, object>;
+                if (fields == null) throw new ArgumentException(key + " entries must be objects.");
+                RequireKeys(fields, itemKeys, key + " entry");
+                foreach (var field in itemKeys)
+                {
+                    if (key == "chestMilestones" && (field == "atLevel" || field == "starThreshold"))
+                    {
+                        if (!(fields[field] is long)) throw new ArgumentException(key + "." + field + " must be an integer.");
+                    }
+                    else if (!(fields[field] is string)) throw new ArgumentException(key + "." + field + " must be a string.");
+                }
+            }
+        }
+
+        private static void RequireInteger(Dictionary<string, object> value, string key)
+        {
+            if (!(value[key] is long)) throw new ArgumentException(key + " must be an integer.");
+        }
+
+        private static void RequireString(Dictionary<string, object> value, string key)
+        {
+            if (!(value[key] is string)) throw new ArgumentException(key + " must be a string.");
+        }
+
         private static bool IsKey(string value) => !string.IsNullOrEmpty(value) && value.Length <= 128 && Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
+
+        private sealed class StrictMetadataJsonReader
+        {
+            private const int MaxDepth = 32;
+            private const int MaxElements = 4096;
+            private readonly string text;
+            private int index, depth, elements;
+            private StrictMetadataJsonReader(string text) { this.text = text; }
+
+            public static object Parse(string text)
+            {
+                var reader = new StrictMetadataJsonReader(text);
+                var result = reader.Value(); reader.Space();
+                if (reader.index != text.Length) throw reader.Error("Unexpected content after JSON value.");
+                return result;
+            }
+
+            private object Value()
+            {
+                if (++elements > MaxElements) throw Error("Player metadata JSON element budget exceeded.");
+                Space(); if (index >= text.Length) throw Error("Expected a JSON value.");
+                char c = text[index];
+                if (c == '{') return Object(); if (c == '[') return Array(); if (c == '"') return String();
+                if (c == 't') { Literal("true"); return true; } if (c == 'f') { Literal("false"); return false; } if (c == 'n') { Literal("null"); return null; }
+                if (c == '-' || (c >= '0' && c <= '9')) return Number();
+                throw Error("Invalid JSON value.");
+            }
+
+            private Dictionary<string, object> Object()
+            {
+                Enter();
+                try
+                {
+                    index++; Space(); var result = new Dictionary<string, object>(StringComparer.Ordinal);
+                    if (Take('}')) return result;
+                    while (true)
+                    {
+                        Space(); if (index >= text.Length || text[index] != '"') throw Error("Object key must be a string.");
+                        string key = String(); Space(); Need(':'); object value = Value();
+                        if (result.ContainsKey(key)) throw Error("Duplicate JSON key: " + key + ".");
+                        result.Add(key, value); Space(); if (Take('}')) return result; Need(',');
+                    }
+                }
+                finally { depth--; }
+            }
+
+            private List<object> Array()
+            {
+                Enter();
+                try
+                {
+                    index++; Space(); var result = new List<object>(); if (Take(']')) return result;
+                    while (true) { result.Add(Value()); Space(); if (Take(']')) return result; Need(','); }
+                }
+                finally { depth--; }
+            }
+
+            private string String()
+            {
+                Need('"'); var result = new System.Text.StringBuilder();
+                while (index < text.Length)
+                {
+                    char c = text[index++]; if (c == '"') return result.ToString();
+                    if (c < 0x20) throw Error("Unescaped control character in string.");
+                    if (c != '\\') { result.Append(c); continue; }
+                    if (index >= text.Length) throw Error("Incomplete string escape.");
+                    char e = text[index++];
+                    switch (e)
+                    {
+                        case '"': result.Append('"'); break; case '\\': result.Append('\\'); break; case '/': result.Append('/'); break;
+                        case 'b': result.Append('\b'); break; case 'f': result.Append('\f'); break; case 'n': result.Append('\n'); break;
+                        case 'r': result.Append('\r'); break; case 't': result.Append('\t'); break;
+                        case 'u':
+                            if (index + 4 > text.Length) throw Error("Incomplete Unicode escape.");
+                            int code; if (!int.TryParse(text.Substring(index, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code)) throw Error("Invalid Unicode escape.");
+                            result.Append((char)code); index += 4; break;
+                        default: throw Error("Invalid string escape.");
+                    }
+                }
+                throw Error("Unterminated string.");
+            }
+
+            private object Number()
+            {
+                int start = index; Take('-');
+                if (Take('0')) { if (index < text.Length && text[index] >= '0' && text[index] <= '9') throw Error("Leading zero in number."); }
+                else { if (index >= text.Length || text[index] < '1' || text[index] > '9') throw Error("Invalid number."); while (index < text.Length && text[index] >= '0' && text[index] <= '9') index++; }
+                bool integer = true;
+                if (Take('.')) { integer = false; Digits(); }
+                if (Take('e') || Take('E')) { integer = false; if (!Take('+')) Take('-'); Digits(); }
+                string raw = text.Substring(start, index - start); long whole;
+                if (integer && long.TryParse(raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out whole)) return whole;
+                double number; if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out number)) return number;
+                throw Error("Number is invalid or outside the supported range.");
+            }
+
+            private void Enter() { if (depth >= MaxDepth) throw Error("JSON nesting depth exceeds the maximum of 32."); depth++; }
+            private void Digits() { int start = index; while (index < text.Length && text[index] >= '0' && text[index] <= '9') index++; if (start == index) throw Error("Expected digits."); }
+            private void Literal(string value) { if (index + value.Length > text.Length || string.CompareOrdinal(text, index, value, 0, value.Length) != 0) throw Error("Invalid JSON literal."); index += value.Length; }
+            private void Space() { while (index < text.Length && (text[index] == ' ' || text[index] == '\t' || text[index] == '\r' || text[index] == '\n')) index++; }
+            private bool Take(char c) { if (index < text.Length && text[index] == c) { index++; return true; } return false; }
+            private void Need(char c) { if (!Take(c)) throw Error("Expected '" + c + "'."); }
+            private ArgumentException Error(string message) => new ArgumentException(message + " At character " + index.ToString(CultureInfo.InvariantCulture) + ".");
+        }
     }
 
     [Serializable]

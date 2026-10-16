@@ -24,6 +24,7 @@ namespace Match3Factory
         private int selectedGem;
         private int selectedRow;
         private int selectedColumn;
+        private int selectedLayer;
         private string recoveryNotice;
         private bool autosaveQueued;
         private float zoom = 1f;
@@ -81,6 +82,23 @@ namespace Match3Factory
             actions.Add(MakeButton("Zoom +", () => SetZoom(zoom + .1f)));
             actions.Add(MakeButton("Zoom −", () => SetZoom(zoom - .1f)));
             rootVisualElement.Add(actions);
+
+            var gridControls = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap } };
+            var gridWidth = new IntegerField("Width") { value = draft.width };
+            gridWidth.RegisterValueChangedCallback(evt => ResizeBoard(evt.newValue, draft.height, draft.layers));
+            gridControls.Add(gridWidth);
+            var gridHeight = new IntegerField("Height") { value = draft.height };
+            gridHeight.RegisterValueChangedCallback(evt => ResizeBoard(draft.width, evt.newValue, draft.layers));
+            gridControls.Add(gridHeight);
+            var gridLayers = new IntegerField("Layers (1–4)") { value = draft.layers };
+            gridLayers.RegisterValueChangedCallback(evt => ResizeBoard(draft.width, draft.height, evt.newValue));
+            gridControls.Add(gridLayers);
+            selectedLayer = Mathf.Clamp(selectedLayer, 0, draft.layers - 1);
+            var layerChoices = Enumerable.Range(0, draft.layers).Select(index => index.ToString()).ToList();
+            var layerPicker = new DropdownField("Active layer", layerChoices, Mathf.Clamp(selectedLayer, 0, layerChoices.Count - 1));
+            layerPicker.RegisterValueChangedCallback(evt => { selectedLayer = int.Parse(evt.newValue); Refresh(); });
+            gridControls.Add(layerPicker);
+            rootVisualElement.Add(gridControls);
 
             var fields = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap } };
             var profile = new DropdownField("Game profile", Profiles.ToList(), Mathf.Max(0, Array.IndexOf(Profiles, draft.gameProfileId)));
@@ -232,8 +250,9 @@ namespace Match3Factory
                 for (int column = 0; column < draft.width; column++)
                 {
                     int r = row, c = column;
-                    var cell = draft.cells.FirstOrDefault(item => item.row == r && item.column == c && item.layer == 0);
+                    var cell = draft.cells.FirstOrDefault(item => item.row == r && item.column == c && item.layer == selectedLayer);
                     var button = new Button(() => Paint(r, c)) { text = CellLabel(cell) };
+                    button.RegisterCallback<PointerEnterEvent>(evt => { if ((evt.pressedButtons & 1) != 0) Paint(r, c, false, button); });
                     button.style.width = 54 * zoom;
                     button.style.height = 44 * zoom;
                     button.style.marginRight = 2;
@@ -302,21 +321,45 @@ namespace Match3Factory
             return cell.obstacleId == "sample.glass" ? "glass" : cell.contentId ?? "?";
         }
 
-        private void Paint(int row, int column)
+        private void Paint(int row, int column, bool rebuild = true, Button paintedCell = null)
         {
             PushUndo();
             selectedRow = row;
             selectedColumn = column;
-            var cell = draft.cells.First(item => item.row == row && item.column == column && item.layer == 0);
+            selectedLayer = Mathf.Clamp(selectedLayer, 0, draft.layers - 1);
+            var cell = draft.cells.First(item => item.row == row && item.column == column && item.layer == selectedLayer);
             cell.active = true;
-            draft.activeMask[row * draft.width + column] = true;
+            draft.activeMask[LevelDraftGridOperations.Index(draft.width, draft.height, row, column, selectedLayer)] = true;
             cell.contentId = GemIds[selectedGem];
-            Refresh();
+            if (rebuild) Refresh();
+            else
+            {
+                paintedCell.text = CellLabel(cell);
+                paintedCell.style.unityFontStyleAndWeight = FontStyle.Bold;
+                paintedCell.style.backgroundColor = cell.obstacleId == "sample.glass" ? new Color(.35f, .72f, .88f) : StyleKeyword.Null;
+                RefreshStatus();
+                QueueAutosave();
+            }
+        }
+
+        private void ResizeBoard(int width, int height, int layers)
+        {
+            if (width < 1 || width > 32 || height < 1 || height > 32 || layers < 1 || layers > 4 || (long)width * height * layers > 4096)
+            {
+                CreateGUI();
+                return;
+            }
+            PushUndo();
+            LevelDraftGridOperations.Resize(draft, width, height, layers);
+            selectedLayer = Mathf.Clamp(selectedLayer, 0, layers - 1);
+            selectedRow = Mathf.Clamp(selectedRow, 0, height - 1);
+            selectedColumn = Mathf.Clamp(selectedColumn, 0, width - 1);
+            CreateGUI();
         }
 
         private void ToggleGlass()
         {
-            var cell = draft.cells.FirstOrDefault(item => item.row == selectedRow && item.column == selectedColumn && item.layer == 0);
+            var cell = draft.cells.FirstOrDefault(item => item.row == selectedRow && item.column == selectedColumn && item.layer == selectedLayer);
             if (cell == null) return;
             PushUndo();
             cell.obstacleId = cell.obstacleId == "sample.glass" ? null : "sample.glass";
@@ -326,11 +369,11 @@ namespace Match3Factory
 
         private void ToggleHole()
         {
-            var cell = draft.cells.FirstOrDefault(item => item.row == selectedRow && item.column == selectedColumn && item.layer == 0);
+            var cell = draft.cells.FirstOrDefault(item => item.row == selectedRow && item.column == selectedColumn && item.layer == selectedLayer);
             if (cell == null) return;
             PushUndo();
             cell.active = !cell.active;
-            draft.activeMask[cell.row * draft.width + cell.column] = cell.active;
+            draft.activeMask[LevelDraftGridOperations.Index(draft.width, draft.height, cell.row, cell.column, cell.layer)] = cell.active;
             if (!cell.active) { cell.contentId = null; cell.obstacleId = null; cell.obstacleDurability = 0; }
             else cell.contentId = GemIds[selectedGem];
             Refresh();
