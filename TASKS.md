@@ -1,5 +1,9 @@
 # Match3-Level-Factory | MASTER TASKS.md
 
+## OWNER RULE | SINGLE CODEX HANDOFF AFTER FULL LFX MILESTONE | 2026-10-17
+**Owner's latest workflow decision:** ChatGPT first completes ALL feasible source implementation, compatible upstream donor adaptation, internal source checks and authored regression/test cases for the ACTIVE milestone before assigning ANY Codex test task. Do not pause after one or two small tasks/repairs to create another Codex prompt. Send ONE comprehensive local Unity/integration/visual (as applicable) test and evidence request at milestone code-complete, then independently audit real results. Existing unfinished per-step Codex requests are nonmandatory and must not interrupt ongoing development. An environmental blocker or a missing real device/provider is recorded honestly, never replaced with a fabricated PASS. Keep source-first licensing, this single root TASKS.md as the tracker, no unauthorized CI/paid runners, no destructive cleanup or interference with owner files. This changes testing cadence only; existing milestone criteria, task IDs, sequencing and evidence thresholds remain unchanged.
+
+
 
 ## OWNER RULE | BEFORE EACH CODING TASK CHECK DONOR SOURCE | 2026-10-16
 **Mandatory source-first preflight, owner override of any rewrite-first approach:** Before EVERY Level Factory implementation/fix, first read the active entry in this sole root `TASKS.md`, inspect already working Factory code, then open the **actual pinned GitHub source files** of previously discussed donor projects. Prefer direct import of legally permitted working functions/classes and minimal compatibility adapters; never replace a known reusable component with a from-scratch lookalike for convenience. This PROCESS update does not add task IDs, alter LFX-M00..M14 statuses, authorize a cross-repo Engine edit or declare Factory parity.
