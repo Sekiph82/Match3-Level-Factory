@@ -49,6 +49,11 @@ class SeedMatrixTests(unittest.TestCase):
         obj = json.loads(self.result()); obj["drafts"][0]["draftSha256"] = "f"*64
         with self.assertRaises(ValueError):
             _read_result(json.dumps(obj), 712, "Coral_Rescue")
+        with self.assertRaises(ValueError):
+            _read_result('{' + '"seed":712,"seed":712' + '}', 712, "Coral_Rescue")
+        obj = json.loads(self.result()); obj["seed"] = True
+        with self.assertRaises(ValueError):
+            _read_result(json.dumps(obj), 1, "Coral_Rescue")
 
     @patch("seed_matrix.subprocess.run")
     def test_distribution_counts_unknown_fail_and_success(self, run):
