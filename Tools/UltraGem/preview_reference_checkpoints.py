@@ -105,3 +105,52 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
         "releaseAuthorized": False,
         "checkpoints": checkpoints,
     }
+
+
+
+def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result = {}
+    for name, value in pairs:
+        if name in result:
+            raise ValueError(f"duplicate JSON key: {name}")
+        result[name] = value
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Read one prior donor pipeline JSON and print a read-only preview.
+
+    No file writes, no play/Engine invocation and no automatic publication.
+    """
+    import argparse
+    import sys
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="UltraGem reference checkpoints (NOT Engine gameplay)")
+    parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--candidate", type=int, default=0)
+    parser.add_argument("--policy", choices=POLICIES, default="smart")
+    parser.add_argument("--run", type=int, default=0)
+    args = parser.parse_args(argv)
+    try:
+        source = args.input
+        if not source.is_file() or source.is_symlink():
+            raise ValueError("input must be an existing non-symlink file")
+        if not 0 < source.stat().st_size <= 2_000_000:
+            raise ValueError("input must be nonempty and at most 2MB")
+        batch = json.loads(source.read_text(encoding="utf-8-sig"),
+                           object_pairs_hook=_unique_keys,
+                           parse_constant=lambda value: (_ for _ in ()).throw(
+                               ValueError(f"invalid numeric constant: {value}")))
+        output = preview_reference_checkpoints(
+            batch, candidate_index=args.candidate, policy=args.policy, run_index=args.run
+        )
+        sys.stdout.write(json.dumps(output, sort_keys=True, ensure_ascii=False, indent=2) + "\n")
+        return 0
+    except (ValueError, OSError, UnicodeError, json.JSONDecodeError) as error:
+        sys.stderr.write(f"invalid_checkpoint_input: {error}\n")
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
