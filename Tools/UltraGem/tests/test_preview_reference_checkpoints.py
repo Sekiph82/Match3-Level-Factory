@@ -91,6 +91,11 @@ class CheckpointPreviewTests(unittest.TestCase):
         self.assertEqual([x["paddedFinalStatistics"] for x in output["checkpoints"]],
                          [False,True,True])
         self.assertFalse(output["goalsOrWinProved"])
+        # The actual UltraGem _simulate_one() pads with the same final
+        # score repeatedly. A drifting later slot is fabricated data.
+        row["steps"][0][2] = [5,5] + [0] * 11
+        with self.assertRaisesRegex(ValueError, "repeat one final score"):
+            preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
 
     def test_pinned_donor_disabled_after_locked_area_is_legal(self):
         # gemengine.InitialFillerDisable.apply writes type=-1 and color=0,
