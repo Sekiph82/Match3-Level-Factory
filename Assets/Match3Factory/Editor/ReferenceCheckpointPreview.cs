@@ -15,7 +15,13 @@ namespace Match3Factory
     {
         public const string EngineStatus = "BLOCKED_ENG_M24";
         public const string ResultStatus = "REFERENCE_CHECKPOINT_PREVIEW_ONLY";
-        public const string PinnedDonor = "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12";
+        public const string PinnedDonor = "0e64a5bc66a5fce4b899bf0734c9cc7417b4ed12"; 
+        private static readonly string[] RequiredRootKeys = {
+            "resultStatus", "engineStatus", "sourceRevision", "candidateIndex",
+            "policy", "runIndex", "runSeed", "donorOutcome", "checkpointSha256",
+            "checkpointsAreBeforeMove", "exactCascadeOrderOrBoardFramesAvailable",
+            "goalsOrWinProved", "lastMoveMayBeUnobserved", "releaseAuthorized", "checkpoints"
+        };
         public static readonly string[] MetricNames = {
             "score", "ndestroyed", "nunlocked", "nstripe", "nbomb", "nzapper",
             "combo_22", "combo_42", "combo_44", "combo_51", "combo_52", "combo_54", "combo_55"
@@ -55,6 +61,7 @@ namespace Match3Factory
         {
             if (string.IsNullOrWhiteSpace(json) || Encoding.UTF8.GetByteCount(json) > 256000)
                 throw new ArgumentException("Checkpoint receipt is empty or exceeds 256 KB.");
+            LevelDraftJson.AssertStrictObjectKeys(json, RequiredRootKeys, "reference checkpoint");
             Receipt receipt;
             try { receipt = JsonUtility.FromJson<Receipt>(json); }
             catch (Exception exc) { throw new ArgumentException("Malformed checkpoint receipt.", exc); }
