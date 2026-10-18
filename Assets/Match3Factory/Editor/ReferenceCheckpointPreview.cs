@@ -20,7 +20,7 @@ namespace Match3Factory
             "resultStatus", "engineStatus", "sourceRevision", "candidateIndex",
             "policy", "runIndex", "runSeed", "donorOutcome", "checkpointSha256",
             "checkpointsAreBeforeMove", "exactCascadeOrderOrBoardFramesAvailable",
-            "goalsOrWinProved", "lastMoveMayBeUnobserved", "releaseAuthorized", "checkpoints", "initialBoard", "initialBoardSha256", "initialBoardIsSeededDonorSetup", "boardAtCheckpointAvailable"
+            "goalsOrWinProved", "lastMoveMayBeUnobserved", "releaseAuthorized", "checkpoints", "referencePreviewVersion", "donorMovesUsed", "donorShuffles", "paddedFinalStatisticsPresent", "initialBoard", "initialBoardSha256", "initialBoardIsSeededDonorSetup", "boardAtCheckpointAvailable"
         };
         public static readonly string[] MetricNames = {
             "score", "ndestroyed", "nunlocked", "nstripe", "nbomb", "nzapper",
@@ -41,7 +41,8 @@ namespace Match3Factory
         [Serializable]
         public sealed class Checkpoint
         {
-            public int beforeMove;
+            public int beforeMove, stepSlot;
+            public bool observedBeforeMove, paddedFinalStatistics;
             public Metrics cumulative;
         }
 
@@ -63,9 +64,9 @@ namespace Match3Factory
         {
             public string resultStatus, engineStatus, sourceRevision, policy;
             public string donorOutcome, checkpointSha256;
-            public int candidateIndex, runIndex;
+            public int candidateIndex, runIndex, referencePreviewVersion, donorMovesUsed, donorShuffles;
             public long runSeed;
-            public bool checkpointsAreBeforeMove, exactCascadeOrderOrBoardFramesAvailable;
+            public bool checkpointsAreBeforeMove, paddedFinalStatisticsPresent, exactCascadeOrderOrBoardFramesAvailable;
             public bool goalsOrWinProved, lastMoveMayBeUnobserved, releaseAuthorized;
             public bool initialBoardIsSeededDonorSetup, boardAtCheckpointAvailable;
             public string initialBoardSha256;
@@ -81,11 +82,11 @@ namespace Match3Factory
             Receipt receipt;
             try { receipt = JsonUtility.FromJson<Receipt>(json); }
             catch (Exception exc) { throw new ArgumentException("Malformed checkpoint receipt.", exc); }
-            if (receipt == null || receipt.resultStatus != ResultStatus
+            if (receipt == null || receipt.referencePreviewVersion != 2 || receipt.resultStatus != ResultStatus
                 || receipt.engineStatus != EngineStatus || receipt.sourceRevision != PinnedDonor
                 || receipt.releaseAuthorized || receipt.goalsOrWinProved
                 || receipt.exactCascadeOrderOrBoardFramesAvailable
-                || !receipt.checkpointsAreBeforeMove || !receipt.lastMoveMayBeUnobserved
+                || !receipt.lastMoveMayBeUnobserved
                 || !receipt.initialBoardIsSeededDonorSetup || receipt.boardAtCheckpointAvailable)
                 throw new ArgumentException("Not a safe, pinned, pre-move reference checkpoint.");
             if (Array.IndexOf(new[] { "worst", "random", "best", "smart" }, receipt.policy) < 0
@@ -96,7 +97,17 @@ namespace Match3Factory
                 || receipt.runIndex < 0 || receipt.runIndex > 7
                 || receipt.runSeed < 0 || receipt.runSeed > int.MaxValue
                 || receipt.checkpoints == null || receipt.checkpoints.Length < 1
-                || receipt.checkpoints.Length > 40)
+                || receipt.checkpoints.Length > 40
+                || receipt.donorMovesUsed < 0 || receipt.donorMovesUsed > receipt.checkpoints.Length
+                || receipt.donorShuffles < 0 || receipt.donorShuffles > 21
+                || (receipt.donorOutcome == "MOVE_LIMIT" &&
+                    receipt.donorMovesUsed != receipt.checkpoints.Length)
+                || (receipt.donorOutcome == "NO_MOVES_AFTER_SHUFFLE_BUDGET" &&
+                    receipt.donorShuffles != 21)
+                || receipt.checkpointsAreBeforeMove !=
+                    (receipt.donorMovesUsed == receipt.checkpoints.Length)
+                || receipt.paddedFinalStatisticsPresent !=
+                    (receipt.donorMovesUsed < receipt.checkpoints.Length))
                 throw new ArgumentException("Checkpoint header or count is outside donor bounds.");
 
             // No board frame is ever synthesized: these are the actual pinned
@@ -142,7 +153,12 @@ namespace Match3Factory
             for (int step = 0; step < receipt.checkpoints.Length; step++)
             {
                 Checkpoint point = receipt.checkpoints[step];
-                if (point == null || point.beforeMove != step + 1 || point.cumulative == null)
+                bool actualMove = step < receipt.donorMovesUsed;
+                if (point == null || point.stepSlot != step + 1
+                    || point.beforeMove != (actualMove ? step + 1 : 0)
+                    || point.observedBeforeMove != actualMove
+                    || point.paddedFinalStatistics == actualMove
+                    || point.cumulative == null)
                     throw new ArgumentException("Missing or unordered pre-move checkpoint.");
                 long[] values = point.cumulative.Values();
                 if (step > 0) body.Append(',');
