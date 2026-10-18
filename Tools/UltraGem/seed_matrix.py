@@ -21,18 +21,27 @@ MAX_SEEDS = 8
 MAX_JSON_BYTES = 2_000_000
 
 
+def _strict_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON property")
+        result[key] = value
+    return result
+
+
 def _read_result(text: str, seed: int, profile_id: str) -> dict[str, Any]:
     if len(text.encode("utf-8")) > MAX_JSON_BYTES:
         raise ValueError("donor output exceeds size limit")
     try:
-        result = json.loads(text)
+        result = json.loads(text, object_pairs_hook=_strict_pairs)
     except (ValueError, TypeError) as exc:
         raise ValueError("donor result is not JSON") from exc
     if (not isinstance(result, dict)
         or result.get("resultStatus") != "REFERENCE_ONLY_UNVERIFIED"
         or result.get("engineStatus") != "BLOCKED_ENG_M24"
         or result.get("sourceRevision") != ULTRAGEM_REVISION
-        or result.get("seed") != seed):
+        or type(result.get("seed")) is not int or result.get("seed") != seed):
         raise ValueError("donor revision/status/seed mismatch")
     config = result.get("configuration")
     if not isinstance(config, dict) or config.get("gameProfileId") != profile_id:
