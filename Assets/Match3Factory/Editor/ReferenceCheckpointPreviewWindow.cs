@@ -26,7 +26,8 @@ namespace Match3Factory
         {
             EditorGUILayout.LabelField("UltraGem · Reference-only checkpoint inspector", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "Cumulative diagnostic observations BEFORE donor moves. NOT a grid replay, " +
+                "Donor diagnostic timeline: real BEFORE-MOVE observations and padded FINAL slots " +
+                "are explicitly distinguished. NOT a grid replay, " +
                 "not cascade ordering, not goal completion and not a WIN or difficulty test. " +
                 "MATCH3_ENGINE validation: BLOCKED_ENG_M24. Production release forbidden.",
                 MessageType.Warning);
