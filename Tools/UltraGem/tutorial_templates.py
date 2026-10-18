@@ -39,7 +39,7 @@ def make_tutorial_templates(profile_id: str, *, seed: int = 712) -> list[dict[st
             activeMask=mask,moveBudget=moves,timedMode=False,timeLimitSeconds=0,
             oneStarThreshold=1,twoStarThreshold=2,threeStarThreshold=3,
             difficultyLabel="difficulty.unrated",editorHintKey=f"tutorial.hint.{index:02d}",
-            cells=cells,goals=[dict(goalId="goal.primary",targetId="template.collect.color.1",
+            cells=cells,goals=[dict(goalId="goal.primary",targetId="sample.score",
                                    targetCount=goal_count)],engineSchemaVersion=None,
             sourceRepository="factory/original-templates",sourceRevision="lfx-r10",
             sourceKind="OriginalSyntheticTutorialTemplate",
