@@ -88,9 +88,9 @@ namespace Match3Factory
                     {
                         float centerX = (shapeIndex + 1) * 0.25f;
                         float dx = (u - centerX) / 0.112f;
-                        float dy = (v - itemY) / (0.112f * width / (float)height);
-                        // Normalize in pixel space to avoid stretching at modern phone aspect ratios.
-                        dy = (v - itemY) * height / (0.112f * width);
+                        // Normalize in pixel space to avoid stretching on portrait screens.
+                        float dy = (v - itemY) * height / (0.112f * width);
+                        if (Mathf.Abs(dx) > 1.25f || Mathf.Abs(dy) > 1.25f) continue;
                         if (Inside(Shapes[index][shapeIndex], dx, dy))
                             col = Color.Lerp(palette[(shapeIndex + 1) % 3], Color.white,
                                 0.13f + 0.16f * Mathf.Clamp01(1f - Mathf.Abs(dx + dy) / 2f));
