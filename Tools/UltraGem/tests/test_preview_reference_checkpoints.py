@@ -104,7 +104,7 @@ class CheckpointPreviewTests(unittest.TestCase):
             if corruption=="duplicate_coordinate": cells[1]["row"]=cells[0]["row"]; cells[1]["column"]=cells[0]["column"]
             if corruption=="unknown_type": cells[4]["type"]=99
             if corruption=="wrong_count": cells.pop()
-            if corruption=="disabled_locked": cells[8].update({"type":-1,"status":2})
+            if corruption=="disabled_locked": cells[8].update({"type":-1,"color":2,"status":2})
             with self.subTest(corruption=corruption), self.assertRaises(ValueError):
                 preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
         for invalid in ("Expert", "../smart", None, 77):
