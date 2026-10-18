@@ -152,6 +152,8 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
             raise ValueError("donor cumulative checkpoint moved backwards")
         delta = {name: now - before for name, now, before
                  in zip(STAT_NAMES, validated, previous) if now != before}
+        if index > moves_used and delta:
+            raise ValueError("pinned donor must repeat one final score in trailing padded slots")
         before_move = index < moves_used
         checkpoints.append({"beforeMove": index + 1 if before_move else 0,
                             "stepSlot": index + 1,
