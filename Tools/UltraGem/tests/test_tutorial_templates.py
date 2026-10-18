@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import leveldraft
+from profile_compatibility import diagnose_profile_compatibility
 from tutorial_templates import make_tutorial_templates,tutorial_source_receipt
 from theme_contract import PROFILES
 
@@ -16,6 +17,7 @@ class TutorialTemplatesTests(unittest.TestCase):
             self.assertEqual([sum(not b for b in d['activeMask']) for d in drafts],[0,0,1])
             self.assertEqual([d['goals'][0]['targetCount'] for d in drafts],[3,5,8])
             self.assertTrue(all(d['validationStatus']=='PROTOTYPE_ONLY' for d in drafts))
+            self.assertTrue(all(diagnose_profile_compatibility(d)['localPolicyStatus']=='ACCEPTED_FOR_LOCAL_AUTHORING_ONLY' for d in drafts))
             self.assertTrue(all(not any(c['specialId'] or c['locked'] for c in d['cells']) for d in drafts))
             for d in drafts:self.assertEqual(leveldraft.loads_strict(leveldraft.dumps_canonical(d)),d)
             self.assertEqual(drafts,make_tutorial_templates(game))
