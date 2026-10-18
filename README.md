@@ -38,7 +38,11 @@ stdout when `--output` is omitted. In Unity open **Tools → Match3 Factory →
 Level Draft Studio → UltraGem checkpoints** and select the created file. This
 read-only inspector verifies the stored pre-move numeric checkpoint SHA256,
 shows cumulative statistics, and rejects unsupported Engine/WIN claims. It
-cannot show a real cascade grid, validate a goal, or certify playability.
+also shows the **actual UltraGem setup board before any simulated move** as raw
+donor type/color/status integers, with a separate canonical board SHA256. The
+setup is not the board at any later checkpoint. It cannot show a real cascade
+grid, validate a goal, or certify playability. Changing the donor board,
+generator configuration or four-policy run seed invalidates the preview.
 For the separate original FX geometry preview use **Neutral FX rehearsal**.
 Reduced-effects mode displays one static frame. Both inspectors stay in
 Editor-only assemblies and must never appear in exported games.
