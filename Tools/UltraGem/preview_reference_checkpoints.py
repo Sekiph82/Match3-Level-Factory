@@ -120,7 +120,7 @@ def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     """Read one prior donor pipeline JSON and print a read-only preview.
 
-    No file writes, no play/Engine invocation and no automatic publication.
+    No implicit file writes; an explicit --output creates NEW project-contained JSON only.\n    No play/Engine invocation, overwrite or automatic publication.
     """
     import argparse
     import sys
@@ -131,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate", type=int, default=0)
     parser.add_argument("--policy", choices=POLICIES, default="smart")
     parser.add_argument("--run", type=int, default=0)
+    parser.add_argument("--output", type=Path, help="optional NEW project-relative .json; no overwrite")
     args = parser.parse_args(argv)
     try:
         source = args.input
@@ -145,7 +146,19 @@ def main(argv: list[str] | None = None) -> int:
         output = preview_reference_checkpoints(
             batch, candidate_index=args.candidate, policy=args.policy, run_index=args.run
         )
-        sys.stdout.write(json.dumps(output, sort_keys=True, ensure_ascii=False, indent=2) + "\n")
+        content = json.dumps(output, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
+        if args.output is None:
+            sys.stdout.write(content)
+        else:
+            requested = args.output
+            if requested.is_absolute() or ".." in requested.parts or requested.suffix.lower() != ".json":
+                raise ValueError("output must be a relative .json path without parent traversal")
+            base = Path.cwd().resolve()
+            destination = (base / requested).resolve()
+            if not destination.is_relative_to(base) or not destination.parent.is_dir():
+                raise ValueError("output must stay inside an existing current-project directory")
+            with destination.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(content)
         return 0
     except (ValueError, OSError, UnicodeError, json.JSONDecodeError) as error:
         sys.stderr.write(f"invalid_checkpoint_input: {error}\n")
