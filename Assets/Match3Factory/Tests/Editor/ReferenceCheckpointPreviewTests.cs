@@ -8,6 +8,11 @@ namespace Match3Factory.Tests
     {
         private static ReferenceCheckpointPreview.Receipt TwoSteps()
         {
+            var cells = new ReferenceCheckpointPreview.BoardCell[36];
+            for (int row = 0; row < 6; row++)
+            for (int column = 0; column < 6; column++)
+                cells[row * 6 + column] = new ReferenceCheckpointPreview.BoardCell
+                { row = row, column = column, type = 1, color = 1, status = 0 };
             return new ReferenceCheckpointPreview.Receipt {
                 resultStatus = ReferenceCheckpointPreview.ResultStatus,
                 engineStatus = ReferenceCheckpointPreview.EngineStatus,
@@ -15,6 +20,10 @@ namespace Match3Factory.Tests
                 candidateIndex = 0, runIndex = 0, runSeed = 777,
                 policy = "smart", donorOutcome = "MOVE_LIMIT",
                 checkpointSha256 = "4c1cafdc5872feaeeeb0e38142068ea17bae929e6ee0625bff80daa26643f4ec",
+                initialBoardIsSeededDonorSetup = true, boardAtCheckpointAvailable = false,
+                initialBoardSha256 = "10561542d92b047dca613cac4abbb5a5e5e30b23013794995362e9d7c0da41e8",
+                initialBoard = new ReferenceCheckpointPreview.InitialBoard
+                { rows = 6, columns = 6, cells = cells },
                 checkpointsAreBeforeMove = true, lastMoveMayBeUnobserved = true,
                 exactCascadeOrderOrBoardFramesAvailable = false,
                 goalsOrWinProved = false, releaseAuthorized = false,
@@ -41,6 +50,9 @@ namespace Match3Factory.Tests
             Assert.IsFalse(imported.goalsOrWinProved);
             Assert.AreEqual("BLOCKED_ENG_M24", imported.engineStatus);
             Assert.AreEqual(a.checkpointSha256, imported.checkpointSha256);
+            Assert.AreEqual(36, imported.initialBoard.cells.Length);
+            Assert.AreEqual(a.initialBoardSha256, imported.initialBoardSha256);
+            Assert.IsFalse(imported.boardAtCheckpointAvailable);
         }
 
         [Test]
@@ -80,6 +92,27 @@ namespace Match3Factory.Tests
             string omitted = valid.Replace("\"resultStatus\":\"REFERENCE_CHECKPOINT_PREVIEW_ONLY\",", "");
             Assert.AreNotEqual(valid, omitted);
             Assert.Throws<ArgumentException>(() => ReferenceCheckpointPreview.Parse(omitted));
+        }
+
+        [Test]
+        public void InitialBoardMustBeCanonicalAndCannotClaimMoveFrames()
+        {
+            var changed = TwoSteps();
+            changed.initialBoard.cells[0].type = 2;
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(changed)));
+            changed = TwoSteps();
+            changed.initialBoard.cells[1].column = 0;
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(changed)));
+            changed = TwoSteps();
+            changed.boardAtCheckpointAvailable = true;
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(changed)));
+            changed = TwoSteps();
+            changed.initialBoardIsSeededDonorSetup = false;
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(changed)));
         }
 
         [Test]
