@@ -7,12 +7,14 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-# Pinned donor scoregames.STAT_NAMES interface double, not a replacement solver.
-stub = types.ModuleType("scoregames")
-stub.STAT_NAMES = (
-    "score","ndestroyed","nunlocked","nstripe","nbomb","nzapper",
-    "combo_22","combo_42","combo_44","combo_51","combo_52","combo_54","combo_55")
-sys.modules["scoregames"] = stub
+# Isolated preview test fixture when this file is run outside the checkout.
+# In the actual repository, always import the REAL pinned scoregames module.
+if not (Path(__file__).resolve().parents[1] / "scoregames.py").is_file():
+    stub = types.ModuleType("scoregames")
+    stub.STAT_NAMES = (
+        "score","ndestroyed","nunlocked","nstripe","nbomb","nzapper",
+        "combo_22","combo_42","combo_44","combo_51","combo_52","combo_54","combo_55")
+    sys.modules["scoregames"] = stub
 from preview_reference_checkpoints import preview_reference_checkpoints, PINNED
 
 
