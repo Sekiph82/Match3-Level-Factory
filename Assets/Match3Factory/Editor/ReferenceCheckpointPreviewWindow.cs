@@ -42,6 +42,10 @@ namespace Match3Factory
                 receipt.policy + " / " + receipt.runIndex + " / candidate " + receipt.candidateIndex);
             EditorGUILayout.LabelField("Donor seed", receipt.runSeed.ToString());
             EditorGUILayout.LabelField("Donor stop reason", receipt.donorOutcome);
+            EditorGUILayout.LabelField("Actually attempted donor moves", receipt.donorMovesUsed.ToString());
+            EditorGUILayout.LabelField("Donor shuffle attempts", receipt.donorShuffles.ToString());
+            EditorGUILayout.LabelField("Trailing slots", receipt.paddedFinalStatisticsPresent ?
+                "PADDED FINAL COUNTERS, no move at this slot" : "None");
             EditorGUILayout.LabelField("Before-move checkpoint SHA256", receipt.checkpointSha256);
             EditorGUILayout.LabelField("Actual replay and goal proof", "NOT_RUN / UNAVAILABLE");
             selected = EditorGUILayout.IntSlider("Checkpoint (before move)",
@@ -54,8 +58,10 @@ namespace Match3Factory
             scroll = EditorGUILayout.BeginScrollView(scroll);
             DrawInitialBoard(receipt.initialBoard);
             EditorGUILayout.Space(5);
-            EditorGUILayout.LabelField("Move " + point.beforeMove +
-                " · cumulative observed events (no inferred frame)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(point.observedBeforeMove ?
+                "Before donor move " + point.beforeMove + " · observed counters" :
+                "Slot " + point.stepSlot + " · PADDED FINAL donor counters (no move)",
+                EditorStyles.boldLabel);
             for (int i = 0; i < ReferenceCheckpointPreview.MetricNames.Length; i++)
                 EditorGUILayout.LabelField(
                     ReferenceCheckpointPreview.MetricNames[i],
