@@ -91,7 +91,7 @@ class CandidateDiversityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             candidate_diversity.screen_catalog([("A", a), ("A", a)])
         with self.assertRaises(ValueError):
-            candidate_diversity.screen_catalog([("N"+str(i), a) for i in range(513)])
+            candidate_diversity.screen_catalog([("N"+str(i), a) for i in range(65)])
 
     def test_invalid_draft_fails_closed(self):
         a = fixture()
