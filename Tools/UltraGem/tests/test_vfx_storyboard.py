@@ -38,7 +38,7 @@ class VfxStoryboardTests(unittest.TestCase):
         animated = create_vfx_storyboard('Wonder_Pop', 'portal', reduced_motion=False)
         reduced = create_vfx_storyboard('Wonder_Pop', 'portal', reduced_motion=True)
         self.assertEqual(reduced['frameCount'], 1)
-        self.assertEqual(reduced['frameDurationMs'], 0)
+        self.assertEqual(reduced['totalDurationMs'], 0)
         self.assertNotEqual(animated['storyboardSha256'], reduced['storyboardSha256'])
         self.assertEqual(animated['engineStatus'], 'BLOCKED_ENG_M24')
         for output in (animated, reduced):
