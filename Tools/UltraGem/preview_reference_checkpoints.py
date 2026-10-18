@@ -59,8 +59,8 @@ def _initial_board_observation(candidate: dict[str, Any]) -> tuple[dict[str, Any
                       "color": color, "status": status})
     cells.sort(key=lambda c: (c["row"], c["column"]))
     for cell in cells:
-        if cell["type"] == -1 and (cell["color"] != 0 or cell["status"] != 0):
-            raise ValueError("disabled donor cell cannot hold a color or a lock")
+        if cell["type"] == -1 and cell["color"] != 0:
+            raise ValueError("disabled donor cell cannot hold a color")
         numeric.append([cell["row"], cell["column"], cell["type"],
                         cell["color"], cell["status"]])
     digest = hashlib.sha256(json.dumps(numeric, separators=(",", ":")).encode("utf-8")).hexdigest()
