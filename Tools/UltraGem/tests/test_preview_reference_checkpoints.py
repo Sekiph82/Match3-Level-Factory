@@ -29,6 +29,11 @@ class CheckpointPreviewTests(unittest.TestCase):
             "configuration":{"maxMoves":3},
             "referenceStatistics":[{
                 "candidateIndex":0,
+                "initialBoard":{
+                    "rows":6,"columns":6,
+                    "cells":[{"row":r,"column":c,"type":1,"color":1,"status":0}
+                             for r in range(6) for c in range(6)]
+                },
                 "statistics":{p:copy.deepcopy(run) for p in ("worst","random","best","smart")}
             }]
         }
@@ -47,6 +52,11 @@ class CheckpointPreviewTests(unittest.TestCase):
         self.assertFalse(output["releaseAuthorized"])
         self.assertTrue(output["lastMoveMayBeUnobserved"])
         self.assertEqual(output["engineStatus"],"BLOCKED_ENG_M24")
+        self.assertTrue(output["initialBoardIsSeededDonorSetup"])
+        self.assertFalse(output["boardAtCheckpointAvailable"])
+        self.assertEqual(len(output["initialBoard"]["cells"]),36)
+        self.assertEqual(output["initialBoardSha256"],
+                         "10561542d92b047dca613cac4abbb5a5e5e30b23013794995362e9d7c0da41e8")
 
     def test_invalid_authority_never_claims_win(self):
         for change in ("fake_win","engine","revision"):
@@ -70,6 +80,15 @@ class CheckpointPreviewTests(unittest.TestCase):
             if change == "bad_metrics":
                 source["referenceStatistics"][0]["statistics"]["smart"]["steps"][0][0].append(1)
             with self.subTest(change=change), self.assertRaises(ValueError):
+                preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
+        for corruption in ("duplicate_coordinate","unknown_type","wrong_count","disabled_locked"):
+            source=self.example()
+            cells=source["referenceStatistics"][0]["initialBoard"]["cells"]
+            if corruption=="duplicate_coordinate": cells[1]["row"]=cells[0]["row"]; cells[1]["column"]=cells[0]["column"]
+            if corruption=="unknown_type": cells[4]["type"]=99
+            if corruption=="wrong_count": cells.pop()
+            if corruption=="disabled_locked": cells[8].update({"type":-1,"status":2})
+            with self.subTest(corruption=corruption), self.assertRaises(ValueError):
                 preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
         for invalid in ("Expert", "../smart", None, 77):
             with self.assertRaises(ValueError):
