@@ -40,7 +40,7 @@ def propose_experiment(*, game_id: str, experiment_id: str,
         variant=item["variantId"]
         weight=item["weightPercent"]
         source=item["configReference"]
-        if not isinstance(variant,str) or re.fullmatch("[A-Za-z][A-Za-z0-9._-]{1,39}",variant) is None or variant in seen:
+        if not isinstance(variant,str) or re.fullmatch("[A-Za-z][A-Za-z0-9._-]{0,39}",variant) is None or variant in seen:
             raise ValueError("invalid or duplicate variant ID")
         seen.add(variant)
         if type(weight) is not int or not 1<=weight<=99:
