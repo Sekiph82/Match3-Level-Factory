@@ -21,20 +21,27 @@ from preview_reference_checkpoints import preview_reference_checkpoints, PINNED
 class CheckpointPreviewTests(unittest.TestCase):
     def example(self):
         steps = [[0] * 13, [4,4] + [0] * 11, [18,14,2,1] + [0] * 9]
-        run = {"completedRuns":1,"outcomes":["MOVE_LIMIT"],"runSeeds":[777],"steps":[steps]}
+        run = {"completedRuns":1,"outcomes":["MOVE_LIMIT"],"runSeeds":[0],"steps":[steps]}
         return {
             "resultStatus":"REFERENCE_ONLY_UNVERIFIED",
             "engineStatus":"BLOCKED_ENG_M24",
             "sourceRepository":"JohannesBuchner/ultragem","sourceRevision":PINNED,
-            "configuration":{"maxMoves":3},
+            "seed":43,
+            "configuration":{
+                "rows":6,"columns":6,"colors":3,
+                "candidateCount":1,"runsPerPolicy":1,"maxMoves":3
+            },
             "referenceStatistics":[{
-                "candidateIndex":0,
+                "candidateIndex":0,"seed":43,
                 "initialBoard":{
                     "rows":6,"columns":6,
                     "cells":[{"row":r,"column":c,"type":1,"color":1,"status":0}
                              for r in range(6) for c in range(6)]
                 },
-                "statistics":{p:copy.deepcopy(run) for p in ("worst","random","best","smart")}
+                "statistics":{
+                    p:dict(copy.deepcopy(run),runSeeds=[(43+104729+1009*i)%(2**31-1)])
+                    for i,p in enumerate(("worst","random","best","smart"))
+                }
             }]
         }
 
@@ -80,6 +87,16 @@ class CheckpointPreviewTests(unittest.TestCase):
             if change == "bad_metrics":
                 source["referenceStatistics"][0]["statistics"]["smart"]["steps"][0][0].append(1)
             with self.subTest(change=change), self.assertRaises(ValueError):
+                preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
+        for corruption in ("candidate_seed","run_seed","dimensions","color_range","run_count"):
+            source=self.example()
+            record=source["referenceStatistics"][0]
+            if corruption=="candidate_seed": record["seed"]+=1
+            if corruption=="run_seed": record["statistics"]["smart"]["runSeeds"][0]+=1
+            if corruption=="dimensions": source["configuration"]["rows"]=7
+            if corruption=="color_range": record["initialBoard"]["cells"][0]["color"]=5
+            if corruption=="run_count": source["configuration"]["runsPerPolicy"]=2
+            with self.subTest(corruption=corruption), self.assertRaises(ValueError):
                 preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
         for corruption in ("duplicate_coordinate","unknown_type","wrong_count","disabled_locked"):
             source=self.example()
