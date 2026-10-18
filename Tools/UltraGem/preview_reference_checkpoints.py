@@ -26,6 +26,47 @@ def _nonnegative(value: Any, name: str, limit: int = 10**12) -> int:
     return value
 
 
+
+def _initial_board_observation(candidate: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Capture the real donor's SETUP board; never reconstruct later board states."""
+    board = candidate.get("initialBoard")
+    if not isinstance(board, dict) or set(board) != {"rows", "columns", "cells"}:
+        raise ValueError("pinned donor initialBoard must have exact dimensions and cells")
+    rows = _nonnegative(board["rows"], "initialBoard.rows", 12)
+    columns = _nonnegative(board["columns"], "initialBoard.columns", 12)
+    if not (6 <= rows <= 12 and 6 <= columns <= 12):
+        raise ValueError("initial donor dimensions are outside the pinned generator")
+    raw_cells = board["cells"]
+    if not isinstance(raw_cells, list) or len(raw_cells) != rows * columns:
+        raise ValueError("initial donor cells do not cover the full board")
+    cells = []
+    seen = set()
+    numeric = []
+    for cell in raw_cells:
+        if not isinstance(cell, dict) or set(cell) != {"row", "column", "type", "color", "status"}:
+            raise ValueError("invalid donor board cell fields")
+        row = _nonnegative(cell["row"], "initialCell.row", rows - 1)
+        column = _nonnegative(cell["column"], "initialCell.column", columns - 1)
+        kind = cell["type"]
+        if type(kind) is not int or not -1 <= kind <= 5:
+            raise ValueError("unknown original donor gem type")
+        color = _nonnegative(cell["color"], "initialCell.color", 6)
+        status = _nonnegative(cell["status"], "initialCell.status", 2)
+        if (row, column) in seen:
+            raise ValueError("duplicate initial donor board cell")
+        seen.add((row, column))
+        cells.append({"row": row, "column": column, "type": kind,
+                      "color": color, "status": status})
+    cells.sort(key=lambda c: (c["row"], c["column"]))
+    for cell in cells:
+        if cell["type"] == -1 and (cell["color"] != 0 or cell["status"] != 0):
+            raise ValueError("disabled donor cell cannot hold a color or a lock")
+        numeric.append([cell["row"], cell["column"], cell["type"],
+                        cell["color"], cell["status"]])
+    digest = hashlib.sha256(json.dumps(numeric, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return {"rows": rows, "columns": columns, "cells": cells}, digest
+
+
 def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int,
                                   policy: str, run_index: int) -> dict[str, Any]:
     if not isinstance(batch, dict) or batch.get("resultStatus") != "REFERENCE_ONLY_UNVERIFIED":
@@ -51,6 +92,7 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
                and record.get("candidateIndex") == candidate_index]
     if len(matches) != 1:
         raise ValueError("missing or duplicate candidate checkpoint provenance")
+    initial_board, board_sha = _initial_board_observation(matches[0])
     data = matches[0].get("statistics")
     if not isinstance(data, dict) or set(data) != set(POLICIES):
         raise ValueError("four original donor policies required")
@@ -98,6 +140,10 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
         "runSeed": run_seed,
         "donorOutcome": row["outcomes"][run_index],
         "checkpointSha256": digest,
+        "initialBoard": initial_board,
+        "initialBoardSha256": board_sha,
+        "initialBoardIsSeededDonorSetup": True,
+        "boardAtCheckpointAvailable": False,
         "checkpointsAreBeforeMove": True,
         "exactCascadeOrderOrBoardFramesAvailable": False,
         "goalsOrWinProved": False,
