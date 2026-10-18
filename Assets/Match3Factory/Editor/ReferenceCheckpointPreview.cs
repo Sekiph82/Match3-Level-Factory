@@ -115,7 +115,7 @@ namespace Match3Factory
                     || cell.type < -1 || cell.type > 5
                     || cell.color < 0 || cell.color > 6
                     || cell.status < 0 || cell.status > 2
-                    || (cell.type == -1 && (cell.color != 0 || cell.status != 0)))
+                    || (cell.type == -1 && cell.color != 0))
                     throw new ArgumentException("Invalid, noncanonical or duplicated setup board cell.");
                 if (i > 0) boardPayload.Append(',');
                 boardPayload.Append('[');
