@@ -10,7 +10,7 @@ namespace Match3Factory
     {
         private ReferenceCheckpointPreview.Receipt receipt;
         private int selected;
-        private string notice = "Open a reference-checkpoint JSON created by the local stdout-only Python CLI.";
+        private string notice = "Open a v2 checkpoint JSON created by the bounded Python CLI; no Engine replay.";
         private Vector2 scroll;
 
         [MenuItem("Tools/Match3 Factory/UltraGem Checkpoint Inspector")]
@@ -37,6 +37,7 @@ namespace Match3Factory
             EditorGUILayout.HelpBox(notice, receipt == null ? MessageType.Info : MessageType.None);
             if (receipt == null) return;
 
+            EditorGUILayout.LabelField("Preview format", "v" + receipt.referencePreviewVersion + " reference only");
             EditorGUILayout.LabelField("Pinned source revision", receipt.sourceRevision);
             EditorGUILayout.LabelField("Policy / run",
                 receipt.policy + " / " + receipt.runIndex + " / candidate " + receipt.candidateIndex);
@@ -48,7 +49,7 @@ namespace Match3Factory
                 "PADDED FINAL COUNTERS, no move at this slot" : "None");
             EditorGUILayout.LabelField("Before-move checkpoint SHA256", receipt.checkpointSha256);
             EditorGUILayout.LabelField("Actual replay and goal proof", "NOT_RUN / UNAVAILABLE");
-            selected = EditorGUILayout.IntSlider("Checkpoint (before move)",
+            selected = EditorGUILayout.IntSlider("Donor observation / final slot",
                 selected, 0, receipt.checkpoints.Length - 1);
 
             var point = receipt.checkpoints[selected];
