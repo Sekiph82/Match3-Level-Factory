@@ -21,7 +21,8 @@ from preview_reference_checkpoints import preview_reference_checkpoints, PINNED
 class CheckpointPreviewTests(unittest.TestCase):
     def example(self):
         steps = [[0] * 13, [4,4] + [0] * 11, [18,14,2,1] + [0] * 9]
-        run = {"completedRuns":1,"outcomes":["MOVE_LIMIT"],"runSeeds":[0],"steps":[steps]}
+        run = {"completedRuns":1,"outcomes":["MOVE_LIMIT"],"runSeeds":[0],
+               "movesUsed":[3],"shuffles":[0],"steps":[steps]}
         return {
             "resultStatus":"REFERENCE_ONLY_UNVERIFIED",
             "engineStatus":"BLOCKED_ENG_M24",
@@ -59,11 +60,37 @@ class CheckpointPreviewTests(unittest.TestCase):
         self.assertFalse(output["releaseAuthorized"])
         self.assertTrue(output["lastMoveMayBeUnobserved"])
         self.assertEqual(output["engineStatus"],"BLOCKED_ENG_M24")
+        self.assertEqual(output["referencePreviewVersion"], 2)
+        self.assertEqual(output["donorMovesUsed"], 3)
+        self.assertTrue(output["checkpointsAreBeforeMove"])
+        self.assertFalse(output["paddedFinalStatisticsPresent"])
+        self.assertTrue(all(x["observedBeforeMove"] for x in output["checkpoints"]))
+        self.assertTrue(all(not x["paddedFinalStatistics"] for x in output["checkpoints"]))
         self.assertTrue(output["initialBoardIsSeededDonorSetup"])
         self.assertFalse(output["boardAtCheckpointAvailable"])
         self.assertEqual(len(output["initialBoard"]["cells"]),36)
         self.assertEqual(output["initialBoardSha256"],
                          "10561542d92b047dca613cac4abbb5a5e5e30b23013794995362e9d7c0da41e8")
+
+    def test_padded_final_statistics_are_not_real_move_frames(self):
+        source = self.example()
+        row = source["referenceStatistics"][0]["statistics"]["smart"]
+        row["outcomes"] = ["NO_MOVES_AFTER_SHUFFLE_BUDGET"]
+        row["movesUsed"] = [1]
+        row["shuffles"] = [21]
+        row["steps"][0][1] = [4, 4] + [0] * 11
+        row["steps"][0][2] = [4, 4] + [0] * 11
+        output = preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
+        self.assertFalse(output["checkpointsAreBeforeMove"])
+        self.assertTrue(output["paddedFinalStatisticsPresent"])
+        self.assertEqual(output["donorMovesUsed"],1)
+        self.assertEqual(output["donorShuffles"],21)
+        self.assertEqual([x["observedBeforeMove"] for x in output["checkpoints"]],
+                         [True,False,False])
+        self.assertEqual([x["beforeMove"] for x in output["checkpoints"]],[1,0,0])
+        self.assertEqual([x["paddedFinalStatistics"] for x in output["checkpoints"]],
+                         [False,True,True])
+        self.assertFalse(output["goalsOrWinProved"])
 
     def test_pinned_donor_disabled_after_locked_area_is_legal(self):
         # gemengine.InitialFillerDisable.apply writes type=-1 and color=0,
@@ -98,6 +125,14 @@ class CheckpointPreviewTests(unittest.TestCase):
             if change == "bad_metrics":
                 source["referenceStatistics"][0]["statistics"]["smart"]["steps"][0][0].append(1)
             with self.subTest(change=change), self.assertRaises(ValueError):
+                preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
+        for corruption in ("moves_used","shuffle_claim","zero_moves_limit"):
+            source = self.example()
+            row = source["referenceStatistics"][0]["statistics"]["smart"]
+            if corruption == "moves_used": row["movesUsed"] = [4]
+            if corruption == "shuffle_claim": row["outcomes"] = ["NO_MOVES_AFTER_SHUFFLE_BUDGET"]
+            if corruption == "zero_moves_limit": row["movesUsed"] = [0]
+            with self.subTest(corruption=corruption), self.assertRaises(ValueError):
                 preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
         for corruption in ("candidate_seed","run_seed","dimensions","color_range","run_count"):
             source=self.example()
