@@ -102,13 +102,14 @@ namespace Match3Factory.Tests
             disabledLocked.initialBoard.cells[0].type = -1;
             disabledLocked.initialBoard.cells[0].color = 0;
             disabledLocked.initialBoard.cells[0].status = 2;
-            // Python's pinned donor allows inherited status on disabled setup
-            // cells; the independent golden hash is verified in integration.
-            disabledLocked.initialBoardSha256 = "10561542d92b047dca613cac4abbb5a5e5e30b23013794995362e9d7c0da41e8";
-            Assert.Throws<ArgumentException>(() =>
-                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(disabledLocked)));
-            // A changed board with an UNCHANGED hash is rejected; not the
-            // same as forbidding disabled + double-locked donor setup cells.
+            // The pinned InitialFillerDisable preserves a preexisting double
+            // lock status on a newly disabled cell. This cross-language
+            // SHA256 golden is independently computed for that legal board.
+            disabledLocked.initialBoardSha256 = "836e99f35018ae2df8a3e4066fb5911d9ff77289f4a78b3203c76cc7fd00eb42";
+            var allowed = ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(disabledLocked));
+            Assert.AreEqual(-1, allowed.initialBoard.cells[0].type);
+            Assert.AreEqual(2, allowed.initialBoard.cells[0].status);
+            // Tampered versions with stale board hash remain rejected.
             var changed = TwoSteps();
             changed.initialBoard.cells[0].type = 2;
             Assert.Throws<ArgumentException>(() =>
