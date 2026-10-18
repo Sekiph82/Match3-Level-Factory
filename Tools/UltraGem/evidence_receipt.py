@@ -108,6 +108,14 @@ def create_local_evidence_receipt(*, source_commit_sha: str,
         or any(not isinstance(a, str) or not a or len(a) > 200 or any(ord(c)<32 for c in a)
                for a in command_argv)):
         raise ValueError("explicit bounded command argv required")
+    # A receipt can be shared to Drive. Keep credentials out of its argv,
+    # including separated --token VALUE command-line options.
+    forbidden_args = ("--token", "--password", "--api-key", "--api_key",
+                      "--client-secret", "--secret", "--authorization", "--credential")
+    if any(arg.lower().split("=", 1)[0] in forbidden_args for arg in command_argv):
+        raise ValueError("credential-bearing command arguments forbidden")
+    if _REDACTION.search(" ".join(command_argv).encode("utf-8")):
+        raise ValueError("credential-bearing command string forbidden")
     if not isinstance(artifacts, list) or not 1 <= len(artifacts) <= MAX_ARTIFACTS:
         raise ValueError("1..32 evidence inputs required")
     seen = set()
