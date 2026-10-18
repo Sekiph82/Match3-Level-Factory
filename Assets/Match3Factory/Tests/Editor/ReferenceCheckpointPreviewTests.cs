@@ -18,20 +18,21 @@ namespace Match3Factory.Tests
                 engineStatus = ReferenceCheckpointPreview.EngineStatus,
                 sourceRevision = ReferenceCheckpointPreview.PinnedDonor,
                 candidateIndex = 0, runIndex = 0, runSeed = 777,
+                referencePreviewVersion = 2, donorMovesUsed = 2, donorShuffles = 0,
                 policy = "smart", donorOutcome = "MOVE_LIMIT",
                 checkpointSha256 = "4c1cafdc5872feaeeeb0e38142068ea17bae929e6ee0625bff80daa26643f4ec",
                 initialBoardIsSeededDonorSetup = true, boardAtCheckpointAvailable = false,
                 initialBoardSha256 = "10561542d92b047dca613cac4abbb5a5e5e30b23013794995362e9d7c0da41e8",
                 initialBoard = new ReferenceCheckpointPreview.InitialBoard
                 { rows = 6, columns = 6, cells = cells },
-                checkpointsAreBeforeMove = true, lastMoveMayBeUnobserved = true,
+                checkpointsAreBeforeMove = true, paddedFinalStatisticsPresent = false, lastMoveMayBeUnobserved = true,
                 exactCascadeOrderOrBoardFramesAvailable = false,
                 goalsOrWinProved = false, releaseAuthorized = false,
                 checkpoints = new[] {
                     new ReferenceCheckpointPreview.Checkpoint {
-                        beforeMove = 1, cumulative = new ReferenceCheckpointPreview.Metrics() },
+                        beforeMove = 1, stepSlot = 1, observedBeforeMove = true, paddedFinalStatistics = false, cumulative = new ReferenceCheckpointPreview.Metrics() },
                     new ReferenceCheckpointPreview.Checkpoint {
-                        beforeMove = 2, cumulative = new ReferenceCheckpointPreview.Metrics {
+                        beforeMove = 2, stepSlot = 2, observedBeforeMove = true, paddedFinalStatistics = false, cumulative = new ReferenceCheckpointPreview.Metrics {
                             score = 4, ndestroyed = 4 } },
                 }
             };
@@ -97,6 +98,17 @@ namespace Match3Factory.Tests
         [Test]
         public void InitialBoardMustBeCanonicalAndCannotClaimMoveFrames()
         {
+            var disabledLocked = TwoSteps();
+            disabledLocked.initialBoard.cells[0].type = -1;
+            disabledLocked.initialBoard.cells[0].color = 0;
+            disabledLocked.initialBoard.cells[0].status = 2;
+            // Python's pinned donor allows inherited status on disabled setup
+            // cells; the independent golden hash is verified in integration.
+            disabledLocked.initialBoardSha256 = "10561542d92b047dca613cac4abbb5a5e5e30b23013794995362e9d7c0da41e8";
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(disabledLocked)));
+            // A changed board with an UNCHANGED hash is rejected; not the
+            // same as forbidding disabled + double-locked donor setup cells.
             var changed = TwoSteps();
             changed.initialBoard.cells[0].type = 2;
             Assert.Throws<ArgumentException>(() =>
@@ -113,6 +125,32 @@ namespace Match3Factory.Tests
             changed.initialBoardIsSeededDonorSetup = false;
             Assert.Throws<ArgumentException>(() =>
                 ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(changed)));
+        }
+
+        [Test]
+        public void PaddedDonorFinalStatisticsCannotMasqueradeAsAnExtraMove()
+        {
+            var padded = TwoSteps();
+            padded.donorOutcome = "NO_MOVES_AFTER_SHUFFLE_BUDGET";
+            padded.donorMovesUsed = 1;
+            padded.donorShuffles = 21;
+            padded.checkpointsAreBeforeMove = false;
+            padded.paddedFinalStatisticsPresent = true;
+            padded.checkpoints[1].stepSlot = 2;
+            padded.checkpoints[1].beforeMove = 0;
+            padded.checkpoints[1].observedBeforeMove = false;
+            padded.checkpoints[1].paddedFinalStatistics = true;
+            var receipt = ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(padded));
+            Assert.IsTrue(receipt.checkpoints[1].paddedFinalStatistics);
+            Assert.IsFalse(receipt.checkpoints[1].observedBeforeMove);
+            Assert.AreEqual(0, receipt.checkpoints[1].beforeMove);
+            padded.checkpoints[1].beforeMove = 2; // fake real move frame
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(padded)));
+            padded = TwoSteps();
+            padded.donorMovesUsed = 1; // no corresponding padded flag
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(padded)));
         }
 
         [Test]
