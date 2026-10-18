@@ -44,7 +44,6 @@ namespace Match3Factory
             EditorGUILayout.LabelField("Donor stop reason", receipt.donorOutcome);
             EditorGUILayout.LabelField("Before-move checkpoint SHA256", receipt.checkpointSha256);
             EditorGUILayout.LabelField("Actual replay and goal proof", "NOT_RUN / UNAVAILABLE");
-            DrawInitialBoard(receipt.initialBoard);
             selected = EditorGUILayout.IntSlider("Checkpoint (before move)",
                 selected, 0, receipt.checkpoints.Length - 1);
 
@@ -53,6 +52,7 @@ namespace Match3Factory
             long[] prev = selected == 0 ? new long[values.Length]
                 : receipt.checkpoints[selected - 1].cumulative.Values();
             scroll = EditorGUILayout.BeginScrollView(scroll);
+            DrawInitialBoard(receipt.initialBoard);
             EditorGUILayout.Space(5);
             EditorGUILayout.LabelField("Move " + point.beforeMove +
                 " · cumulative observed events (no inferred frame)", EditorStyles.boldLabel);
@@ -70,7 +70,7 @@ namespace Match3Factory
             EditorGUILayout.LabelField(
                 "Each cell shows type/color/lock status raw donor integers; no canonical Engine piece mapping.",
                 EditorStyles.wordWrappedMiniLabel);
-            const int size = 30;
+            const int size = 35;
             Rect canvas = GUILayoutUtility.GetRect(board.columns * size, board.rows * size,
                 GUILayout.Width(board.columns * size), GUILayout.Height(board.rows * size));
             for (int i = 0; i < board.cells.Length; i++)
