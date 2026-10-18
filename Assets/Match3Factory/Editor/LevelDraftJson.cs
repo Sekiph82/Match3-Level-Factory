@@ -32,6 +32,18 @@ namespace Match3Factory
             }
         }
 
+        // INTERNAL_REUSE of the existing bounded UTF-8 JSON parser for other
+        // editor-only receipts. Rejects duplicate keys, trailing content,
+        // unknown/missing root keys, excessive nesting and oversized arrays.
+        internal static void AssertStrictObjectKeys(string json, string[] requiredKeys, string context)
+        {
+            if (string.IsNullOrWhiteSpace(json) || Encoding.UTF8.GetByteCount(json) > 256000)
+                throw new ArgumentException("Editor receipt is empty or exceeds 256 KB.");
+            var value = StrictJsonReader.Parse(json) as Dictionary<string, object>;
+            if (value == null) throw new ArgumentException("Editor receipt root must be an object.");
+            RequireKeys(value, requiredKeys, context);
+        }
+
         public static LevelDraft Parse(string json)
         {
             if (string.IsNullOrWhiteSpace(json) || Encoding.UTF8.GetByteCount(json) > 2_000_000)
