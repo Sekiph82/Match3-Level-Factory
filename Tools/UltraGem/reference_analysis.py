@@ -23,8 +23,8 @@ def analyze_ranked_output(value: dict[str, Any], *, threshold: float = 0.95) -> 
     if not isinstance(value, dict) or value.get("resultStatus") != "REFERENCE_ONLY_UNVERIFIED" or value.get("engineStatus") != "BLOCKED_ENG_M24":
         raise ValueError("Only pinned reference-only Engine-blocked UltraGem results can be inspected")
     candidates = value.get("drafts")
-    if not isinstance(candidates, list) or len(candidates) > 512:
-        raise ValueError("drafts must be an array within the 512-entry budget")
+    if not isinstance(candidates, list) or len(candidates) > 64:
+        raise ValueError("drafts must be an array within the 64-entry budget")
     dataset = []
     features = []
     for index, item in enumerate(candidates):
