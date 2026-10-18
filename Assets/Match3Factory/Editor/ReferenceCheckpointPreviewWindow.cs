@@ -44,6 +44,7 @@ namespace Match3Factory
             EditorGUILayout.LabelField("Donor stop reason", receipt.donorOutcome);
             EditorGUILayout.LabelField("Before-move checkpoint SHA256", receipt.checkpointSha256);
             EditorGUILayout.LabelField("Actual replay and goal proof", "NOT_RUN / UNAVAILABLE");
+            DrawInitialBoard(receipt.initialBoard);
             selected = EditorGUILayout.IntSlider("Checkpoint (before move)",
                 selected, 0, receipt.checkpoints.Length - 1);
 
@@ -60,6 +61,32 @@ namespace Match3Factory
                     ReferenceCheckpointPreview.MetricNames[i],
                     values[i] + "  (delta since previous checkpoint: +" + (values[i] - prev[i]) + ")");
             EditorGUILayout.EndScrollView();
+        }
+
+        private static void DrawInitialBoard(ReferenceCheckpointPreview.InitialBoard board)
+        {
+            EditorGUILayout.Space(6);
+            EditorGUILayout.LabelField("Seeded original donor SETUP (never post-move)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                "Each cell shows type/color/lock status raw donor integers; no canonical Engine piece mapping.",
+                EditorStyles.wordWrappedMiniLabel);
+            const int size = 30;
+            Rect canvas = GUILayoutUtility.GetRect(board.columns * size, board.rows * size,
+                GUILayout.Width(board.columns * size), GUILayout.Height(board.rows * size));
+            for (int i = 0; i < board.cells.Length; i++)
+            {
+                var cell = board.cells[i];
+                Rect box = new Rect(canvas.x + cell.column * size, canvas.y + cell.row * size,
+                    size - 1, size - 1);
+                string label = cell.type < 0 ? "X" : cell.type.ToString() + "/" + cell.color;
+                if (cell.status > 0) label += "*";
+                GUI.Box(box, new GUIContent(label,
+                    "row=" + cell.row + ", col=" + cell.column +
+                    ", donor type=" + cell.type + ", donor color=" + cell.color +
+                    ", donor lock status=" + cell.status));
+            }
+            EditorGUILayout.LabelField("Board SHA256 validated at import, not a replay checksum.",
+                EditorStyles.wordWrappedMiniLabel);
         }
 
         private void OpenJson()
