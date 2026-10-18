@@ -93,7 +93,7 @@ def create_vfx_storyboard(profile_id: str, effect: str, *, reduced_motion: bool 
         "releaseAuthorized": False,
         "isGameplayRuleSource": False,
         "reducedMotion": reduced_motion,
-        "frameDurationMs": 0 if reduced_motion else TOTAL_MS,
+        "totalDurationMs": 0 if reduced_motion else TOTAL_MS,
         "frameCount": count,
         "frames": frames,
     }
