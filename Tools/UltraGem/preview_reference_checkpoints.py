@@ -78,6 +78,16 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
     config = batch.get("configuration")
     if not isinstance(config, dict):
         raise ValueError("missing factory generation configuration")
+
+    rows = _nonnegative(config.get("rows"), "config.rows", 12)
+    columns = _nonnegative(config.get("columns"), "config.columns", 12)
+    colors = _nonnegative(config.get("colors"), "config.colors", 6)
+    candidate_count = _nonnegative(config.get("candidateCount"), "config.candidateCount", 16)
+    runs = _nonnegative(config.get("runsPerPolicy"), "config.runsPerPolicy", 8)
+    source_seed = _nonnegative(batch.get("seed"), "sourceSeed", 2**31 - 1)
+    if not (6 <= rows <= 12 and 6 <= columns <= 12 and 3 <= colors <= 6
+            and 1 <= candidate_count <= 16 and 1 <= runs <= 8):
+        raise ValueError("reference configuration is outside pinned generation bounds")
     max_moves = _nonnegative(config.get("maxMoves"), "maxMoves", 40)
     if not 1 <= max_moves <= 40:
         raise ValueError("maxMoves outside existing factory budget")
@@ -86,13 +96,20 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
     if not isinstance(policy, str) or policy not in POLICIES:
         raise ValueError("unknown donor policy; fifth Engine persona is unavailable")
     records = batch.get("referenceStatistics")
-    if not isinstance(records, list) or not 1 <= len(records) <= 16:
+    if not isinstance(records, list) or len(records) != candidate_count:
         raise ValueError("referenceStatistics must be a bounded nonempty batch")
     matches = [record for record in records if isinstance(record, dict)
                and record.get("candidateIndex") == candidate_index]
     if len(matches) != 1:
         raise ValueError("missing or duplicate candidate checkpoint provenance")
+    expected_candidate_seed = (source_seed + candidate_index * 7919) % (2**31 - 1)
+    if (matches[0].get("seed") != expected_candidate_seed):
+        raise ValueError("candidate seed is not the pinned factory derivation")
     initial_board, board_sha = _initial_board_observation(matches[0])
+    if initial_board["rows"] != rows or initial_board["columns"] != columns:
+        raise ValueError("initial board dimensions disagree with generation configuration")
+    if any(cell["color"] > colors for cell in initial_board["cells"]):
+        raise ValueError("initial donor cell color exceeds configured palette")
     data = matches[0].get("statistics")
     if not isinstance(data, dict) or set(data) != set(POLICIES):
         raise ValueError("four original donor policies required")
@@ -100,7 +117,7 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
     if not isinstance(row, dict):
         raise ValueError("invalid donor policy record")
     count = _nonnegative(row.get("completedRuns"), "completedRuns", 8)
-    if not 1 <= count <= 8:
+    if not 1 <= count <= 8 or count != runs:
         raise ValueError("invalid run count")
     if not all(isinstance(row.get(k), list) and len(row[k]) == count
                for k in ("outcomes", "runSeeds", "steps")):
@@ -110,6 +127,10 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
     if any(o not in OUTCOMES for o in row["outcomes"]):
         raise ValueError("unknown donor outcome, cannot promote to WIN")
     run_seed = _nonnegative(row["runSeeds"][run_index], "runSeed", 2**31 - 1)
+    expected_run_seed = (expected_candidate_seed + 104729 * (run_index + 1)
+                         + 1009 * POLICIES.index(policy)) % (2**31 - 1)
+    if run_seed != expected_run_seed:
+        raise ValueError("policy run seed does not match the pinned donor derivation")
     sample = row["steps"][run_index]
     if not isinstance(sample, list) or len(sample) != max_moves:
         raise ValueError("exact bounded before-move checkpoints required")
