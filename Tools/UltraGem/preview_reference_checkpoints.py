@@ -120,7 +120,7 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
     if not 1 <= count <= 8 or count != runs:
         raise ValueError("invalid run count")
     if not all(isinstance(row.get(k), list) and len(row[k]) == count
-               for k in ("outcomes", "runSeeds", "steps")):
+               for k in ("outcomes", "runSeeds", "movesUsed", "shuffles", "steps")):
         raise ValueError("donor run fields disagree with completedRuns")
     if run_index >= count:
         raise ValueError("unknown run")
@@ -131,6 +131,12 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
                          + 1009 * POLICIES.index(policy)) % (2**31 - 1)
     if run_seed != expected_run_seed:
         raise ValueError("policy run seed does not match the pinned donor derivation")
+    moves_used = _nonnegative(row["movesUsed"][run_index], "movesUsed", max_moves)
+    shuffles = _nonnegative(row["shuffles"][run_index], "shuffles", 21)
+    if row["outcomes"][run_index] == "NO_MOVES_AFTER_SHUFFLE_BUDGET" and shuffles != 21:
+        raise ValueError("donor exhausted-shuffle outcome must have 21 attempts")
+    if row["outcomes"][run_index] == "MOVE_LIMIT" and moves_used != max_moves:
+        raise ValueError("MOVE_LIMIT must consume the full donor move budget")
     sample = row["steps"][run_index]
     if not isinstance(sample, list) or len(sample) != max_moves:
         raise ValueError("exact bounded before-move checkpoints required")
@@ -146,13 +152,19 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
             raise ValueError("donor cumulative checkpoint moved backwards")
         delta = {name: now - before for name, now, before
                  in zip(STAT_NAMES, validated, previous) if now != before}
-        checkpoints.append({"beforeMove": index + 1, "deltaSincePriorCheckpoint": delta,
+        before_move = index < moves_used
+        checkpoints.append({"beforeMove": index + 1 if before_move else 0,
+                            "stepSlot": index + 1,
+                            "observedBeforeMove": before_move,
+                            "paddedFinalStatistics": not before_move,
+                            "deltaSincePriorCheckpoint": delta,
                             "cumulative": dict(zip(STAT_NAMES, validated))})
         previous = validated
     digest = hashlib.sha256(json.dumps(sample, sort_keys=True, separators=(",", ":"))
                             .encode("utf-8")).hexdigest()
     return {
         "resultStatus": "REFERENCE_CHECKPOINT_PREVIEW_ONLY",
+        "referencePreviewVersion": 2,
         "engineStatus": "BLOCKED_ENG_M24",
         "sourceRevision": PINNED,
         "candidateIndex": candidate_index,
@@ -160,12 +172,15 @@ def preview_reference_checkpoints(batch: dict[str, Any], *, candidate_index: int
         "runIndex": run_index,
         "runSeed": run_seed,
         "donorOutcome": row["outcomes"][run_index],
+        "donorMovesUsed": moves_used,
+        "donorShuffles": shuffles,
         "checkpointSha256": digest,
         "initialBoard": initial_board,
         "initialBoardSha256": board_sha,
         "initialBoardIsSeededDonorSetup": True,
         "boardAtCheckpointAvailable": False,
-        "checkpointsAreBeforeMove": True,
+        "checkpointsAreBeforeMove": moves_used == max_moves,
+        "paddedFinalStatisticsPresent": moves_used < max_moves,
         "exactCascadeOrderOrBoardFramesAvailable": False,
         "goalsOrWinProved": False,
         "lastMoveMayBeUnobserved": True,
