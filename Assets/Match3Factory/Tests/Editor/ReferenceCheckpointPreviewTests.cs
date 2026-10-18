@@ -69,6 +69,20 @@ namespace Match3Factory.Tests
         }
 
         [Test]
+        public void StrictJsonRejectsDuplicateUnknownAndMissingRootKeys()
+        {
+            string valid = JsonUtility.ToJson(TwoSteps());
+            string duplicated = valid.Replace("\"runSeed\":777", "\"runSeed\":777,\"runSeed\":778");
+            Assert.AreNotEqual(valid, duplicated, "Known Unity JSON fixture must include runSeed");
+            Assert.Throws<ArgumentException>(() => ReferenceCheckpointPreview.Parse(duplicated));
+            string extra = valid.Substring(0, valid.Length - 1) + ",\"win\":true}";
+            Assert.Throws<ArgumentException>(() => ReferenceCheckpointPreview.Parse(extra));
+            string omitted = valid.Replace("\"resultStatus\":\"REFERENCE_CHECKPOINT_PREVIEW_ONLY\",", "");
+            Assert.AreNotEqual(valid, omitted);
+            Assert.Throws<ArgumentException>(() => ReferenceCheckpointPreview.Parse(omitted));
+        }
+
+        [Test]
         public void BoundedNegativeInputsAndNoFalseWin()
         {
             Assert.Throws<ArgumentException>(() =>
