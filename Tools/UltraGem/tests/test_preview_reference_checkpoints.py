@@ -117,5 +117,32 @@ class CheckpointCliTests(unittest.TestCase):
 
 
 
+    def test_optional_output_creates_only_new_project_relative_file(self):
+        import contextlib
+        import io
+        import json
+        import os
+        import tempfile
+        from preview_reference_checkpoints import main
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            source.write_text(json.dumps(CheckpointPreviewTests().example()), encoding="utf-8")
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(directory)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(main(["--input", str(source), "--output", "preview.json"]), 0)
+                target = Path(directory) / "preview.json"
+                before = target.read_text(encoding="utf-8")
+                self.assertEqual(json.loads(before)["engineStatus"], "BLOCKED_ENG_M24")
+                with contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(main(["--input", str(source), "--output", "preview.json"]), 2)
+                    self.assertEqual(main(["--input", str(source), "--output", "../escape.json"]), 2)
+                    self.assertEqual(main(["--input", str(source), "--output", str(source)]), 2)
+                self.assertEqual(target.read_text(encoding="utf-8"), before)
+            finally:
+                os.chdir(previous_cwd)
+
+
 if __name__ == "__main__":
     unittest.main()
