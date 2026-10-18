@@ -56,6 +56,35 @@ class UltraGemCompatibilityTests(unittest.TestCase):
         self.assertEqual((numpy_state_before[1] == numpy_state_after[1]).all(), True)
         self.assertEqual(numpy_state_before[2:], numpy_state_after[2:])
 
+    def test_actual_pinned_ultragem_result_roundtrips_checkpoint_v2(self):
+        # This is the real adapted UltraGem generator/policy code, NOT a
+        # synthetic STAT_NAMES fixture or canonical MATCH3_ENGINE gameplay.
+        import hashlib
+        from preview_reference_checkpoints import preview_reference_checkpoints
+        batch = run_pipeline(
+            rows=6, columns=6, colors=3, seed=31,
+            candidate_count=1, runs=1, max_moves=2,
+            profile_id="Coral_Rescue", max_levels=1)
+        self.assertEqual(batch["resultStatus"],"REFERENCE_ONLY_UNVERIFIED")
+        for policy in ("worst","random","best","smart"):
+            receipt = preview_reference_checkpoints(
+                batch,candidate_index=0,policy=policy,run_index=0)
+            raw = batch["referenceStatistics"][0]["statistics"][policy]
+            expected = hashlib.sha256(json.dumps(
+                raw["steps"][0],sort_keys=True,separators=(",",":")).encode()).hexdigest()
+            self.assertEqual(receipt["referencePreviewVersion"],2)
+            self.assertEqual(receipt["checkpointSha256"],expected)
+            self.assertEqual(receipt["donorMovesUsed"],raw["movesUsed"][0])
+            self.assertEqual(receipt["donorShuffles"],raw["shuffles"][0])
+            self.assertEqual(sum(c["observedBeforeMove"] for c in receipt["checkpoints"]),
+                             raw["movesUsed"][0])
+            self.assertEqual(receipt["paddedFinalStatisticsPresent"],
+                             raw["movesUsed"][0] < len(raw["steps"][0]))
+            self.assertEqual(receipt["initialBoard"]["rows"],6)
+            self.assertFalse(receipt["boardAtCheckpointAvailable"])
+            self.assertFalse(receipt["goalsOrWinProved"])
+            self.assertFalse(receipt["releaseAuthorized"])
+
     def test_event_scoring_preserves_donor_metric_order(self):
         self.assertEqual(
             scoring_function([("activated", 2), ("unlocked", 3), ("destroyed", 4), ("combined", 22)]),
