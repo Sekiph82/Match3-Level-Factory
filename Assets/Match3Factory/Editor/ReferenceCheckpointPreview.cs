@@ -165,7 +165,8 @@ namespace Match3Factory
                 body.Append('[');
                 for (int col = 0; col < values.Length; col++)
                 {
-                    if (values[col] < previous[col] || values[col] > 1000000000000L)
+                    if (values[col] < previous[col] || values[col] > 1000000000000L
+                        || (step > receipt.donorMovesUsed && values[col] != previous[col]))
                         throw new ArgumentException("Metrics must be bounded cumulative observations.");
                     if (col > 0) body.Append(',');
                     body.Append(values[col].ToString(CultureInfo.InvariantCulture));
