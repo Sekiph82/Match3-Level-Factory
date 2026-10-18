@@ -20,7 +20,7 @@ namespace Match3Factory
             "resultStatus", "engineStatus", "sourceRevision", "candidateIndex",
             "policy", "runIndex", "runSeed", "donorOutcome", "checkpointSha256",
             "checkpointsAreBeforeMove", "exactCascadeOrderOrBoardFramesAvailable",
-            "goalsOrWinProved", "lastMoveMayBeUnobserved", "releaseAuthorized", "checkpoints"
+            "goalsOrWinProved", "lastMoveMayBeUnobserved", "releaseAuthorized", "checkpoints", "initialBoard", "initialBoardSha256", "initialBoardIsSeededDonorSetup", "boardAtCheckpointAvailable"
         };
         public static readonly string[] MetricNames = {
             "score", "ndestroyed", "nunlocked", "nstripe", "nbomb", "nzapper",
@@ -46,6 +46,19 @@ namespace Match3Factory
         }
 
         [Serializable]
+        public sealed class BoardCell
+        {
+            public int row, column, type, color, status;
+        }
+
+        [Serializable]
+        public sealed class InitialBoard
+        {
+            public int rows, columns;
+            public BoardCell[] cells;
+        }
+
+        [Serializable]
         public sealed class Receipt
         {
             public string resultStatus, engineStatus, sourceRevision, policy;
@@ -54,6 +67,9 @@ namespace Match3Factory
             public long runSeed;
             public bool checkpointsAreBeforeMove, exactCascadeOrderOrBoardFramesAvailable;
             public bool goalsOrWinProved, lastMoveMayBeUnobserved, releaseAuthorized;
+            public bool initialBoardIsSeededDonorSetup, boardAtCheckpointAvailable;
+            public string initialBoardSha256;
+            public InitialBoard initialBoard;
             public Checkpoint[] checkpoints;
         }
 
@@ -69,7 +85,8 @@ namespace Match3Factory
                 || receipt.engineStatus != EngineStatus || receipt.sourceRevision != PinnedDonor
                 || receipt.releaseAuthorized || receipt.goalsOrWinProved
                 || receipt.exactCascadeOrderOrBoardFramesAvailable
-                || !receipt.checkpointsAreBeforeMove || !receipt.lastMoveMayBeUnobserved)
+                || !receipt.checkpointsAreBeforeMove || !receipt.lastMoveMayBeUnobserved
+                || !receipt.initialBoardIsSeededDonorSetup || receipt.boardAtCheckpointAvailable)
                 throw new ArgumentException("Not a safe, pinned, pre-move reference checkpoint.");
             if (Array.IndexOf(new[] { "worst", "random", "best", "smart" }, receipt.policy) < 0
                 || Array.IndexOf(new[] { "MOVE_LIMIT", "STEP_BUDGET_EXCEEDED",
@@ -81,6 +98,44 @@ namespace Match3Factory
                 || receipt.checkpoints == null || receipt.checkpoints.Length < 1
                 || receipt.checkpoints.Length > 40)
                 throw new ArgumentException("Checkpoint header or count is outside donor bounds.");
+
+            // No board frame is ever synthesized: these are the actual pinned
+            // donor setup cells, stored with deterministic row-major hashing.
+            var initial = receipt.initialBoard;
+            if (initial == null || initial.rows < 6 || initial.rows > 12
+                || initial.columns < 6 || initial.columns > 12
+                || initial.cells == null || initial.cells.Length != initial.rows * initial.columns)
+                throw new ArgumentException("Missing or invalid pinned setup board.");
+            var boardPayload = new StringBuilder("[");
+            for (int i = 0; i < initial.cells.Length; i++)
+            {
+                BoardCell cell = initial.cells[i];
+                if (cell == null || cell.row != i / initial.columns
+                    || cell.column != i % initial.columns
+                    || cell.type < -1 || cell.type > 5
+                    || cell.color < 0 || cell.color > 6
+                    || cell.status < 0 || cell.status > 2
+                    || (cell.type == -1 && (cell.color != 0 || cell.status != 0)))
+                    throw new ArgumentException("Invalid, noncanonical or duplicated setup board cell.");
+                if (i > 0) boardPayload.Append(',');
+                boardPayload.Append('[');
+                boardPayload.Append(cell.row.ToString(CultureInfo.InvariantCulture)); boardPayload.Append(',');
+                boardPayload.Append(cell.column.ToString(CultureInfo.InvariantCulture)); boardPayload.Append(',');
+                boardPayload.Append(cell.type.ToString(CultureInfo.InvariantCulture)); boardPayload.Append(',');
+                boardPayload.Append(cell.color.ToString(CultureInfo.InvariantCulture)); boardPayload.Append(',');
+                boardPayload.Append(cell.status.ToString(CultureInfo.InvariantCulture));
+                boardPayload.Append(']');
+            }
+            boardPayload.Append(']');
+            using (var boardHasher = SHA256.Create())
+            {
+                byte[] digestBytes = boardHasher.ComputeHash(Encoding.UTF8.GetBytes(boardPayload.ToString()));
+                var hex = new StringBuilder(digestBytes.Length * 2);
+                foreach (byte value in digestBytes)
+                    hex.Append(value.ToString("x2", CultureInfo.InvariantCulture));
+                if (!string.Equals(receipt.initialBoardSha256, hex.ToString(), StringComparison.Ordinal))
+                    throw new ArgumentException("Pinned donor initial board SHA256 mismatch.");
+            }
 
             var body = new StringBuilder("[");
             long[] previous = new long[MetricNames.Length];
