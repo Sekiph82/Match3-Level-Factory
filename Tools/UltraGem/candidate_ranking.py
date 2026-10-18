@@ -54,8 +54,8 @@ def rank_reference_candidates(batch: dict[str, Any]) -> dict[str, Any]:
         p = record.get("profileCompatibility")
         if not isinstance(p, dict) or p.get("engineStatus") != "BLOCKED_ENG_M24" or p.get("draftMutationPerformed") is not False:
             raise ValueError("missing profile authority quarantine")
-        accepted = p.get("localPolicyStatus") == "ACCEPTED_BY_BUILDER_POLICY"
-        if p.get("localPolicyStatus") not in ("ACCEPTED_BY_BUILDER_POLICY", "REJECTED_BY_BUILDER_POLICY"):
+        accepted = p.get("localPolicyStatus") == "ACCEPTED_FOR_LOCAL_AUTHORING_ONLY"
+        if p.get("localPolicyStatus") not in ("ACCEPTED_FOR_LOCAL_AUTHORING_ONLY", "REJECTED_BY_BUILDER_POLICY"):
             raise ValueError("unknown local policy status")
         features = extract_reference_features(draft)
         active = max(1, features["activeCellCount"])
@@ -86,7 +86,7 @@ def rank_reference_candidates(batch: dict[str, Any]) -> dict[str, Any]:
             "approvalStatus": "OWNER_REVIEW_REQUIRED",
         })
     ranked.sort(key=lambda x: (
-        x["localPolicyStatus"] != "ACCEPTED_BY_BUILDER_POLICY",
+        x["localPolicyStatus"] != "ACCEPTED_FOR_LOCAL_AUTHORING_ONLY",
         x["donorRankingStatus"] != "RANKED_REFERENCE_HEURISTIC",
         x["staticTriageRisk"], x["draftSha256"],
     ))
