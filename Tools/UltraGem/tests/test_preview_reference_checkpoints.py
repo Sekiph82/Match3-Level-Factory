@@ -65,6 +65,17 @@ class CheckpointPreviewTests(unittest.TestCase):
         self.assertEqual(output["initialBoardSha256"],
                          "10561542d92b047dca613cac4abbb5a5e5e30b23013794995362e9d7c0da41e8")
 
+    def test_pinned_donor_disabled_after_locked_area_is_legal(self):
+        # gemengine.InitialFillerDisable.apply writes type=-1 and color=0,
+        # but deliberately leaves status from DoubleLock (0/2) unchanged.
+        source = self.example()
+        cells = source["referenceStatistics"][0]["initialBoard"]["cells"]
+        cells[0].update({"type":-1,"color":0,"status":2})
+        result = preview_reference_checkpoints(source,candidate_index=0,policy="smart",run_index=0)
+        self.assertEqual(result["initialBoard"]["cells"][0]["type"], -1)
+        self.assertEqual(result["initialBoard"]["cells"][0]["status"], 2)
+        self.assertFalse(result["boardAtCheckpointAvailable"])
+
     def test_invalid_authority_never_claims_win(self):
         for change in ("fake_win","engine","revision"):
             source = self.example()
