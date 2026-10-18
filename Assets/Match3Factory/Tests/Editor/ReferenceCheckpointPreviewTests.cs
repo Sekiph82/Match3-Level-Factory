@@ -149,6 +149,22 @@ namespace Match3Factory.Tests
             Assert.Throws<ArgumentException>(() =>
                 ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(padded)));
             padded = TwoSteps();
+            padded.donorOutcome = "NO_MOVES_AFTER_SHUFFLE_BUDGET";
+            padded.donorMovesUsed = 0;
+            padded.donorShuffles = 21;
+            padded.checkpointsAreBeforeMove = false;
+            padded.paddedFinalStatisticsPresent = true;
+            foreach (var checkpoint in padded.checkpoints)
+            {
+                checkpoint.beforeMove = 0;
+                checkpoint.observedBeforeMove = false;
+                checkpoint.paddedFinalStatistics = true;
+            }
+            // The second slot differs from the first: a real donor would
+            // have repeated the SAME terminal counters in both padded slots.
+            Assert.Throws<ArgumentException>(() =>
+                ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(padded)));
+            padded = TwoSteps();
             padded.donorMovesUsed = 1; // no corresponding padded flag
             Assert.Throws<ArgumentException>(() =>
                 ReferenceCheckpointPreview.Parse(JsonUtility.ToJson(padded)));
