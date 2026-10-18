@@ -213,6 +213,8 @@ def _evaluate_candidate_unscoped(rows: int, columns: int, colors: int, seed: int
                 "completedRuns": len(results),
                 "outcomes": [result.outcome for result in results],
                 "runSeeds": [result.run_seed for result in results],
+                "movesUsed": [result.moves_used for result in results],
+                "shuffles": [result.shuffles for result in results],
                 "steps": [result.steps for result in results],
             }
             for policy, results in policy_runs.items()
