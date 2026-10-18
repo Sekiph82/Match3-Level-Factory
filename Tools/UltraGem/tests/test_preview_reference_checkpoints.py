@@ -76,5 +76,46 @@ class CheckpointPreviewTests(unittest.TestCase):
                 preview_reference_checkpoints(self.example(),candidate_index=0,policy=invalid,run_index=0)
 
 
+
+class CheckpointCliTests(unittest.TestCase):
+    def test_cli_reads_one_reference_run_and_rejects_duplicate_keys(self):
+        import contextlib
+        import io
+        import json
+        import tempfile
+        from preview_reference_checkpoints import main
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "batch.json"
+            source.write_text(json.dumps(CheckpointPreviewTests().example(), sort_keys=True), encoding="utf-8")
+            capture = io.StringIO()
+            with contextlib.redirect_stdout(capture):
+                self.assertEqual(main(["--input", str(source), "--policy", "smart"]), 0)
+            result = json.loads(capture.getvalue())
+            self.assertEqual(result["donorOutcome"], "MOVE_LIMIT")
+            self.assertFalse(result["releaseAuthorized"])
+            source.write_text('{"resultStatus":"A","resultStatus":"B"}', encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(main(["--input", str(source)]), 2)
+
+    def test_cli_limits_and_never_overwrites_source(self):
+        import contextlib
+        import io
+        import json
+        import tempfile
+        from preview_reference_checkpoints import main
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "batch.json"
+            original = json.dumps(CheckpointPreviewTests().example(), sort_keys=True)
+            source.write_text(original, encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(main(["--input", str(source), "--candidate", "999"]), 2)
+                self.assertEqual(main(["--input", str(source), "--run", "3"]), 2)
+            self.assertEqual(source.read_text(encoding="utf-8"), original)
+            source.write_text("x" * 2_000_001, encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(main(["--input", str(source)]), 2)
+
+
+
 if __name__ == "__main__":
     unittest.main()
