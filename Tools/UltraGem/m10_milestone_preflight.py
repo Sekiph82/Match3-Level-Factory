@@ -56,7 +56,7 @@ def _validate_artifact(item: dict[str, Any], game_id: str) -> dict[str, Any]:
     if item["gameProfileId"] != game_id:
         raise ValueError("cross-title artifact cannot be imported")
     kind = item["kind"]
-    if kind not in _KINDS:
+    if not isinstance(kind, str) or kind not in _KINDS:
         raise ValueError("new code, metadata behavior or unreviewed asset kind forbidden")
     prefix, suffix, topology_kind = _KINDS[kind]
     path = item["relativePath"]
@@ -76,6 +76,16 @@ def _validate_artifact(item: dict[str, Any], game_id: str) -> dict[str, Any]:
     body = item["body"]
     if not isinstance(body, bytes) or not 1 <= len(body) <= 8_000_000:
         raise ValueError("bounded actual content bytes required")
+    if kind in ("level", "localization"):
+        # Reject non-finite JSON syntax accepted by Python's default decoder.
+        # Do not attempt to validate proprietary Engine LevelDraft semantics.
+        import json
+        def reject_nonfinite(value: str) -> Any:
+            raise ValueError("non-finite JSON is not canonical content")
+        try:
+            json.loads(body.decode("utf-8"), parse_constant=reject_nonfinite)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("invalid local JSON bytes") from exc
     # Read, hash and retain only checksums and counts; never put bytes into
     # a response, Git history, a secret-bearing build, or any R2 write.
     import io
