@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
@@ -75,6 +76,46 @@ namespace Match3Factory
         public static string ToJson(string canonicalDraftJson)
         {
             return JsonUtility.ToJson(FromCanonicalLevelDraft(canonicalDraftJson));
+        }
+
+        // Delivers two exact source bytes to a NONEXISTENT external folder,
+        // so a VUF consumer can independently pin SHA(canonical LevelDraft)
+        // against the real derived board and never trust an unverified path.
+        public static void ExportNewExternalPair(string validatedDraftJson,
+            string externalNewFolder)
+        {
+            if (String.IsNullOrEmpty(externalNewFolder) ||
+                !Path.IsPathRooted(externalNewFolder))
+                throw new ArgumentException("absolute external new folder required");
+            string folder = Path.GetFullPath(externalNewFolder);
+            string checkout = Path.GetFullPath(Directory.GetCurrentDirectory())
+                .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (folder.StartsWith(checkout, StringComparison.OrdinalIgnoreCase) ||
+                Directory.Exists(folder) || File.Exists(folder))
+                throw new IOException("cannot overwrite repo or existing owner files");
+            var parent = Directory.GetParent(folder);
+            if (parent == null || !parent.Exists)
+                throw new IOException("parent must already exist");
+            for (var d = parent; d != null; d = d.Parent)
+                if ((d.Attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("linked export folder rejected");
+            var draft = LevelDraftJson.Parse(validatedDraftJson);
+            string canonical = LevelDraftJson.Serialize(draft);
+            string envelope = ToJson(canonical);
+            Directory.CreateDirectory(folder);
+            // FileMode.CreateNew ensures zero original/source overwrites.
+            using (var file = new FileStream(Path.Combine(folder,
+                "leveldraft_v1_canonical.json"), FileMode.CreateNew))
+            {
+                var bytes = new UTF8Encoding(false).GetBytes(canonical);
+                file.Write(bytes, 0, bytes.Length);
+            }
+            using (var file = new FileStream(Path.Combine(folder,
+                "LFXV1_visual_handoff.json"), FileMode.CreateNew))
+            {
+                var bytes = new UTF8Encoding(false).GetBytes(envelope);
+                file.Write(bytes, 0, bytes.Length);
+            }
         }
     }
 }
