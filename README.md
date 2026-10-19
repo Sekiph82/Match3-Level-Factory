@@ -185,6 +185,41 @@ reported. Expect `resultStatus=M12_OFFLINE_EVENT_POLICY_PREVIEW_ONLY`,
 ENG-M20 provider contract, authoritative server time/claim idempotency,
 independent age/legal review and real client/owner QA remain mandatory.
 
+## M13 whole-milestone offline catalog/economy/UI workbench
+
+`Tools/UltraGem/m13_milestone_workbench.py` is one **non-authoritative,
+read-only** preview for **all eleven LFX-M13 tasks**, across five games.
+It reuses the existing symbolic `store_catalog`, `iap_binding_guard`,
+`asset_rights`, `localization_qa` and `age_liveops_policy`.
+Its bounded input inventories cover five-title app-namespace-separated store
+products, nonminting IAP bindings, disabled opt-in placements/no-fill fallbacks,
+pure-integer hypothetical coin income/sinks and heart duration assumptions,
+original/rights-reviewed local preview art slots, English localization/fallback,
+disabled visible UI states, untrusted failed/cancelled/duplicate callbacks and
+optional content-addressed catalog change proposals.
+
+The **economy equations are hypothetical spreadsheet-style analysis only**:
+they do not read a player's wallet, invoke ads or issue coins/rewards/lives.
+Even a supplied owner-review note cannot authorize production. For all five
+unverified/child-age titles, real ads/paid offer activation is forbidden in
+this local authoring contract. A BUY/WATCH_AD/CLAIM state is explicitly
+disabled, not a functioning button; actual clickability, correct native UI
+layout, real store inventory/price, live backend claim safety, ENG-M20/M21/M24,
+legal rights, localization review and release approval remain open.
+
+Run the new test suite on the owner's pinned Python from the repo root:
+
+```powershell
+python -m unittest discover -s Tools/UltraGem/tests -p test_m13_milestone_workbench.py -v
+python -m unittest discover -s Tools/UltraGem/tests -v
+```
+
+The module's return remains `M13_OFFLINE_WORKBENCH_REVIEW_ONLY` with
+`officialMilestonePass=false`, `productionAuthorized=false` and
+`consumerEntitlementsMinted=0`; no remote-config export, purchase,
+player-ledger mutation, production catalog publish or owner signoff occurs.
+Source/test review is **not** a claim that the Windows suite has run.
+
 The Unity EditMode tests use the installed Unity 6000.6.5f1 editor and can be
 run with `-runTests -testPlatform editmode`. Source revisions, notices, and
 file-level import hashes are recorded under `Tools/UltraGem/upstream` and
