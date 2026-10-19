@@ -11,7 +11,10 @@ from typing import Any
 from theme_contract import PROFILES
 
 PLATFORMS=("android","ios","windows")
-CHANNELS=("development","staging","production")
+# ``local`` is an offline-only preview namespace used by preview_pack. Its
+# presence here enables metadata planning only; all returned plans continue to
+# deny uploads and production release authorization.
+CHANNELS=("local","development","staging","production")
 REQUIRED_LANGUAGES=("en", "tr")
 
 
