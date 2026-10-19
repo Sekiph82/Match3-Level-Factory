@@ -10,8 +10,11 @@ namespace Match3Factory
         private int profileIndex, effectIndex, frame;
         private bool reduced = true, playing;
         private double nextFrameTime;
-        private Texture2D background;
+        private Texture2D preview;
         private string cachedProfile;
+        private string cachedEffect;
+        private int cachedFrame = -1;
+        private bool cachedReduced;
         private Vector2 scroll;
 
         [MenuItem("Tools/Match3 Factory/Neutral VFX Rehearsal")]
@@ -27,8 +30,7 @@ namespace Match3Factory
         private void OnDisable()
         {
             EditorApplication.update -= Tick;
-            if (background != null) DestroyImmediate(background);
-            background = null;
+            ReleasePreview();
         }
 
         private void Tick()
@@ -74,51 +76,29 @@ namespace Match3Factory
                 EditorStyles.wordWrappedMiniLabel);
 
             string profile = NeutralThemePreviewRenderer.Profiles[profileIndex];
-            if (background == null || !string.Equals(profile, cachedProfile, StringComparison.Ordinal))
+            string effect = NeutralVfxPreviewGeometry.Effects[effectIndex];
+            if (preview == null || !string.Equals(profile, cachedProfile, StringComparison.Ordinal) ||
+                !string.Equals(effect, cachedEffect, StringComparison.Ordinal) ||
+                frame != cachedFrame || reduced != cachedReduced)
             {
-                if (background != null) DestroyImmediate(background);
-                background = NeutralThemePreviewRenderer.Render(profile, 320, 568);
+                ReleasePreview();
+                preview = NeutralVfxPreviewRenderer.Render(profile, effect, frame, reduced);
                 cachedProfile = profile;
+                cachedEffect = effect;
+                cachedFrame = frame;
+                cachedReduced = reduced;
             }
             scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
             Rect canvas = GUILayoutUtility.GetRect(320, 568, GUILayout.Width(320), GUILayout.Height(568));
             if (Event.current.type == EventType.Repaint)
-            {
-                GUI.DrawTexture(canvas, background, ScaleMode.StretchToFill, false);
-                var fx = NeutralVfxPreviewGeometry.Build(profile,
-                    NeutralVfxPreviewGeometry.Effects[effectIndex], frame, reduced);
-                var area = new Rect(canvas.x + 32, canvas.y + 184, 256, 255);
-                foreach (var shape in fx) DrawShape(area, shape);
-            }
+                GUI.DrawTexture(canvas, preview, ScaleMode.StretchToFill, false);
             EditorGUILayout.EndScrollView();
         }
 
-        private static void DrawShape(Rect area, NeutralVfxPreviewGeometry.Shape s)
+        private void ReleasePreview()
         {
-            Color color;
-            if (!ColorUtility.TryParseHtmlString(s.Color, out color))
-                throw new InvalidOperationException("Invalid built-in preview color.");
-            color.a = Mathf.Clamp01(s.Opacity);
-            float x = area.x + s.X * area.width / 1000f;
-            float y = area.y + s.Y * area.height / 1000f;
-            float r = s.Size * area.width / 1000f;
-            if (s.Kind == "line")
-                EditorGUI.DrawRect(new Rect(x - 4, y - r, 8, 2 * r), color);
-            else if (s.Kind == "square")
-                EditorGUI.DrawRect(new Rect(x - r, y - r, 2 * r, 2 * r), color);
-            else
-            {
-                Handles.BeginGUI();
-                Handles.color = color;
-                if (s.Kind == "diamond")
-                    Handles.DrawAAConvexPolygon(
-                        new Vector3(x, y - r), new Vector3(x + r, y),
-                        new Vector3(x, y + r), new Vector3(x - r, y));
-                else if (s.Kind == "circle" || s.Kind == "oval")
-                    Handles.DrawSolidDisc(new Vector3(x, y), Vector3.forward, r);
-                else throw new ArgumentException("Invalid original preview primitive.");
-                Handles.EndGUI();
-            }
+            if (preview != null) DestroyImmediate(preview);
+            preview = null;
         }
     }
 }

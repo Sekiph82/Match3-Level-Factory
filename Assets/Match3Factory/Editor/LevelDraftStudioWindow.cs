@@ -83,6 +83,7 @@ namespace Match3Factory
             actions.Add(MakeButton("Five neutral previews", NeutralThemePreviewWindow.Open));
             actions.Add(MakeButton("Neutral FX rehearsal", NeutralVfxPreviewWindow.Open));
             actions.Add(MakeButton("UltraGem checkpoints", ReferenceCheckpointPreviewWindow.Open));
+            actions.Add(MakeButton("Visual QA Capture Studio", VisualQACaptureStudio.Open));
             actions.Add(MakeButton("Zoom +", () => SetZoom(zoom + .1f)));
             actions.Add(MakeButton("Zoom −", () => SetZoom(zoom - .1f)));
             rootVisualElement.Add(actions);

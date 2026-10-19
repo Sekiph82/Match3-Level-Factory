@@ -9,7 +9,8 @@ from theme_contract import PROFILES
 class SvgEditorFixtureTests(unittest.TestCase):
     def test_editor_only_five_committed_svg_exports_are_source_identical(self):
         folder=ROOT.parents[1]/'Assets/Match3Factory/Editor/Previews/Neutral'
-        self.assertEqual(sorted(p.name for p in folder.iterdir()),
+        # Unity creates adjacent .svg.meta import settings; they are not source SVG assets.
+        self.assertEqual(sorted(p.name for p in folder.glob('*.svg')),
                          sorted(profile+'.svg' for profile in PROFILES))
         for profile in PROFILES:
             path=folder/(profile+'.svg')
