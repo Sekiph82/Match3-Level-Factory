@@ -88,10 +88,10 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
     if (not isinstance(stops, list) or len(stops) > 65 or
             not isinstance(experiment_items, list) or len(experiment_items) > 20):
         raise ValueError("bounded event stops and experiment proposals required")
-    if len(stops) != len(set(stops)) or any(
-        not isinstance(v, str) or len(v) > 170 for v in stops
-    ):
-        raise ValueError("duplicate or malformed disabled event identifiers")
+    if any(not isinstance(v, str) or len(v) > 170 for v in stops):
+        raise ValueError("malformed disabled event identifiers")
+    if len(stops) != len(set(stops)):
+        raise ValueError("duplicate disabled event identifiers")
 
     policy_receipts = []
     content_sets = {}
