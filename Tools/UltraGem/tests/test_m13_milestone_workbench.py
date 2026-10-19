@@ -14,7 +14,7 @@ from theme_contract import PROFILES
 class M13WorkbenchTests(unittest.TestCase):
     @staticmethod
     def product(profile="Coral_Rescue"):
-        name = profile.lower()
+        name = profile.replace("_", "").lower()
         namespace = "com.owner." + name
         return {
             "profileId": profile, "store": "GOOGLE_PLAY",
