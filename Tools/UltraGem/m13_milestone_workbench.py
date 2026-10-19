@@ -95,13 +95,13 @@ def _placement(row: dict[str, Any]) -> dict[str, Any]:
     profile = _entry_game(row)
     if not isinstance(row["placementId"], str) or _ID.fullmatch(row["placementId"]) is None:
         raise ValueError("invalid placement identifier")
-    if row["placementType"] not in _PLACEMENTS:
+    if not isinstance(row["placementType"], str) or row["placementType"] not in _PLACEMENTS:
         raise ValueError("unknown offer/ad placement type")
     if type(row["frequencyCapPerDay"]) is not int or not 0 <= row["frequencyCapPerDay"] <= 20:
         raise ValueError("unbounded offer pressure rejected")
     if row["requiresOptIn"] is not True:
         raise ValueError("offer or rewarded content must be strictly opt-in")
-    if row["noFillFallback"] not in ("DISABLED", "CONTINUE_WITHOUT_AD"):
+    if not isinstance(row["noFillFallback"], str) or row["noFillFallback"] not in ("DISABLED", "CONTINUE_WITHOUT_AD"):
         raise ValueError("missing safe no-fill or offline fallback")
     if row["enabled"] is not False:
         raise ValueError("real ad/offer/claim engagement remains disabled until age and Engine approvals")
@@ -123,7 +123,8 @@ def _callback(row: dict[str, Any]) -> dict[str, Any]:
     }:
         raise ValueError("callback must not contain receipt, identity, server override or grant")
     game = _entry_game(row)
-    if row["callbackKind"] not in _CB_KINDS or row["outcome"] not in _CB_OUTCOMES:
+    if (not isinstance(row["callbackKind"], str) or row["callbackKind"] not in _CB_KINDS
+            or not isinstance(row["outcome"], str) or row["outcome"] not in _CB_OUTCOMES):
         raise ValueError("authoritative success is not observable in this offline workbench")
     ref = row["eventReference"]
     if not isinstance(ref, str) or _REF.fullmatch(ref) is None:
@@ -241,12 +242,12 @@ def preflight_m13_milestone(*, git_commit_sha: str,
         }:
             raise ValueError("unsupported UI state or button fields")
         game = _entry_game(row)
-        if row["stateId"] not in _UI_STATES:
+        if not isinstance(row["stateId"], str) or row["stateId"] not in _UI_STATES:
             raise ValueError("unknown player-visible UI state")
-        if row["messageKey"] not in allowed_keys[game]:
+        if not isinstance(row["messageKey"], str) or row["messageKey"] not in allowed_keys[game]:
             raise ValueError("unlocalized player-visible CTA")
         slot = row["assetSlot"]
-        if slot is not None and (slot not in COMMON_SLOTS or (game, slot) not in preview_art_slots):
+        if slot is not None and (not isinstance(slot, str) or slot not in COMMON_SLOTS or (game, slot) not in preview_art_slots):
             raise ValueError("unreviewed or foreign theme preview slot")
         if row["enabled"] is not False:
             raise ValueError("fake functional CTA blocked until runtime backing exists")
