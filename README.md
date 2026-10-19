@@ -90,6 +90,29 @@ Unit evidence must be rerun on the target Windows checkout before signoff.
 `ENG-M24`, licensed content approval, owner review and signed release gates
 remain blocked.
 
+## M10 whole-milestone offline R2/content safety rehearsal
+
+`Tools/UltraGem/m10_milestone_preflight.py` integrates all ten M10 task
+identities into **one read-only, deterministic Python receipt**. It consumes
+bounded, real local content bytes, checks actual ZIP member hashes, JSON/SVG
+syntax and credential-like payloads, rejects foreign game namespaces and
+unapproved script/runtime artifact kinds, and produces local proposed paths
+through the existing `release_plan.plan_r2_topology` function. It also calls
+the existing always-blocked `publish_preflight` and optionally builds an
+unverified disabled-level incident proposal.
+
+This is NOT a Cloudflare API implementation, actual CDN read, writer token,
+signed manifest, client download smoke, live canary, atomic release switch or
+successful Engine safe-frontier drill. **All network/R2 writes are prohibited.**
+Stored receipts include only content SHA-256/lengths, never source payload
+bytes, tokens or credential material. Accepted kinds are locally screened
+LevelDraft-like JSON, localization JSON and rights-declared PNG/WebP/SVG;
+other kinds (including event/catalog behavior updates) remain **blocked**
+until explicit compatible schemas and independent policy acceptance exist.
+`officialMilestonePass` and `publishAuthorized` always remain false.
+Regression coverage: `Tools/UltraGem/tests/test_m10_milestone_preflight.py`.
+Rerun on the owner's pinned Windows environment before claiming PASS.
+
 The Unity EditMode tests use the installed Unity 6000.6.5f1 editor and can be
 run with `-runTests -testPlatform editmode`. Source revisions, notices, and
 file-level import hashes are recorded under `Tools/UltraGem/upstream` and
