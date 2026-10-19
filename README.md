@@ -113,6 +113,45 @@ until explicit compatible schemas and independent policy acceptance exist.
 Regression coverage: `Tools/UltraGem/tests/test_m10_milestone_preflight.py`.
 Rerun on the owner's pinned Windows environment before claiming PASS.
 
+## M11 whole-milestone core Factory v0.9 source qualification
+
+`Tools/UltraGem/m11_milestone_qualification.py` provides one offline
+qualification receipt across LFX-M11-001..010 using existing, validated
+`LevelDraft`, M09 pack/preflight, and pinned reference-only contracts.
+It accepts 1..500 **supplied local prototype drafts**, never creates a
+level or simulates gameplay, and computes independent strict JSON
+export/import canonical SHA-256 roundtrips, duplicate-level rejection,
+per-title input counts, and game-content fingerprints.
+
+For the M11 target, each of the five games must supply 100 distinct
+validated prototype draft records, then independently replay and verify
+them with the canonical MATCH3_ENGINE and five accepted bot strategies.
+The latter is **NOT implemented/claimed here**. Changing only IDs or
+seeds does not count as 100 distinct gameplay structures; structural
+fingerprints are only a source diversity warning, NOT proof of difficulty,
+solvability, gameplay WIN or independent bot runs.
+
+Developer smoke example from the project's Python environment:
+
+```powershell
+$env:PYTHONPATH = "Tools/UltraGem"
+python -m unittest Tools.UltraGem.tests.test_m11_milestone_qualification -v
+```
+
+For a single record use the existing
+`Assets/Match3Factory/Tests/Fixtures/ultragem_seed_712_draft.json`
+with `leveldraft.loads_strict`, and call
+`qualify_m11_milestone(drafts=[draft], source_git_sha=<actual 40-char HEAD>)`.
+The returned result must be `M11_OFFLINE_SOURCE_QUALIFICATION_ONLY`,
+`engineStatus=BLOCKED_ENG_M24`, `officialMilestonePass=false`.
+No install, user Windows desktop control, Player build, GitHub Actions,
+Cloudflare calls, remote patch, release tag, legal approval, owner
+sign-off or source-code copy occurs. Fresh Windows/Unity install and real
+Editor→Simulator→Pack→Runtime→WIN and online/offline patch smoke are
+separate acceptance gates, not a side effect of this receipt. A real
+test invocation in the current Windows checkout must be recorded before
+claiming this source milestone's tests PASS.
+
 The Unity EditMode tests use the installed Unity 6000.6.5f1 editor and can be
 run with `-runTests -testPlatform editmode`. Source revisions, notices, and
 file-level import hashes are recorded under `Tools/UltraGem/upstream` and
