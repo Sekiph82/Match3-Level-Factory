@@ -107,6 +107,8 @@ class M10MilestonePreflightTests(unittest.TestCase):
             (b"bad json", "levels/a.json", "level", "REFERENCE_ONLY"),
             (b'{"x":1,"x":2}', "levels/a.json", "level", "REFERENCE_ONLY"),
             (b'{"password":"secret"}', "levels/a.json", "level", "REFERENCE_ONLY"),
+            (b'{"metric":NaN}', "levels/a.json", "level", "REFERENCE_ONLY"),
+            (b'{"metric":Infinity}', "levels/a.json", "level", "REFERENCE_ONLY"),
             (b'<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>',
              "media/icon.svg", "media_svg", "OWNER_ORIGINAL"),
         ):
