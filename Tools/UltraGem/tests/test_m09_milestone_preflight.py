@@ -82,5 +82,34 @@ class M09MilestonePreflightTests(unittest.TestCase):
                 preflight_m09_milestone(proposed=batch, git_commit_sha="a" * 40,
                                        locales=locales)
 
+    def test_real_preview_zip_integrity_only_not_signoff(self):
+        body = b'{"schemaVersion":1,"prototype":true}'
+        memory = io.BytesIO()
+        with zipfile.ZipFile(memory, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("localization/en.json", body)
+        record = [{"path": "localization/en.json",
+                   "sha256": hashlib.sha256(body).hexdigest(),
+                   "sizeBytes": len(body), "kind": "LOCALIZATION_JSON",
+                   "rightsStatus": "OWNER_ORIGINAL"}]
+        result = preflight_m09_milestone(proposed=self.sample(1),
+            git_commit_sha="e" * 40, locales=["en"],
+            archive_bytes=memory.getvalue(), inventory=record)
+        self.assertEqual(result["archiveByteScan"]["fileCount"], 1)
+        self.assertFalse(result["officialMilestonePass"])
+        self.assertFalse(result["archiveByteScan"]["productionReleaseAuthorized"])
+        record[0]["sha256"] = "f" * 64
+        with self.assertRaises(ValueError):
+            preflight_m09_milestone(proposed=self.sample(1),
+                git_commit_sha="e" * 40, locales=["en"],
+                archive_bytes=memory.getvalue(), inventory=record)
+
+    def test_approval_note_never_grants_release(self):
+        result = preflight_m09_milestone(proposed=self.sample(1),
+            git_commit_sha="e" * 40, locales=["en"],
+            owner_review_reference="Review/pending")
+        self.assertFalse(result["ownerApprovalVerified"])
+        self.assertFalse(result["signedReleaseRecordProduced"])
+        self.assertFalse(result["publishAuthorized"])
+
 if __name__ == "__main__":
     unittest.main()
