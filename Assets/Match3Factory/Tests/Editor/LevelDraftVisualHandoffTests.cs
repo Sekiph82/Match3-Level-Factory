@@ -51,6 +51,31 @@ namespace Match3Factory.Tests
         }
 
         [Test]
+        public void ReadOnlyExternalPairIsCanonicalAndCreateOnly()
+        {
+            string source = File.ReadAllText(Fixture);
+            string parent = Path.Combine(Path.GetTempPath(),
+                "LFXV1_TestOwned_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(parent);
+            try
+            {
+                string target = Path.Combine(parent, "new");
+                LevelDraftVisualHandoff.ExportNewExternalPair(source, target);
+                var raw = File.ReadAllText(Path.Combine(target,
+                    "leveldraft_v1_canonical.json"));
+                var json = File.ReadAllText(Path.Combine(target,
+                    "LFXV1_visual_handoff.json"));
+                var envelope =
+                    JsonUtility.FromJson<LevelDraftVisualHandoff.Envelope>(json);
+                Assert.That(envelope.sourceDraftSha256,
+                    Is.EqualTo(LevelDraftJson.Sha256(LevelDraftJson.Parse(raw))));
+                Assert.Throws<IOException>(() =>
+                    LevelDraftVisualHandoff.ExportNewExternalPair(source, target));
+            }
+            finally { Directory.Delete(parent, true); }
+        }
+
+        [Test]
         public void InvalidLfxDraftMustFailBeforeCreatingAnyVisualHandoff()
         {
             var valid = File.ReadAllText(Fixture);
