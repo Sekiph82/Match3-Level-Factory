@@ -152,6 +152,39 @@ separate acceptance gates, not a side effect of this receipt. A real
 test invocation in the current Windows checkout must be recorded before
 claiming this source milestone's tests PASS.
 
+## M12 whole-milestone offline LiveOps/Event preview
+
+`Tools/UltraGem/m12_milestone_preflight.py` evaluates all 13 M12
+task areas together as an **unsigned read-only preview**, using the existing
+`event_calendar`, `age_liveops_policy`, `audience_caps`, and
+`experiment_config` modules. For all five titles it checks complete
+age-sensitive flags and content caps, exact DST-aware single schedule windows,
+missing/stopped event IDs, an explicit *unverified caller-provided* UTC
+server sample, already-recorded-claim booleans and non-personalized experiment
+proposals. Its stable hash covers the resulting unsigned preview metadata.
+
+Its inputs do **not** include player identifiers or credentials. The caller
+claim boolean is **not** trusted proof of idempotency, and a displayed active
+event **never mints rewards**. Local calendar cadence is a label, not a
+recurrence expansion engine. Journey/chest/comeback gameplay events and
+reward-grant identifiers are not reconstructed from UltraGem guesses. No
+feature-flag backend write, server-side allocator, child behavioral tracking,
+R2/CDN operation, signed config export, owner approval or ENG-M20/ENG-M24
+compatibility is implied.
+
+Focused tests from the project root (pinned Python environment):
+
+```powershell
+python -m unittest discover -s Tools/UltraGem/tests -p test_m12_milestone_preflight.py -v
+```
+
+Full tests: `python -m unittest discover -s Tools/UltraGem/tests -v`.
+Only after these run on the real Windows checkout may runtime test PASS be
+reported. Expect `resultStatus=M12_OFFLINE_EVENT_POLICY_PREVIEW_ONLY`,
+`engineStatus=BLOCKED_ENG_M24`, `officialMilestonePass=false`. A signed
+ENG-M20 provider contract, authoritative server time/claim idempotency,
+independent age/legal review and real client/owner QA remain mandatory.
+
 The Unity EditMode tests use the installed Unity 6000.6.5f1 editor and can be
 run with `-runTests -testPlatform editmode`. Source revisions, notices, and
 file-level import hashes are recorded under `Tools/UltraGem/upstream` and
