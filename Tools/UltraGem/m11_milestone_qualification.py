@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import Counter
 from typing import Any
 
 import leveldraft
@@ -132,14 +131,14 @@ def qualify_m11_milestone(*, drafts: list[dict[str, Any]],
             "distinctCanonicalDraftHashes": len(hashes[profile]),
             "distinctGameContentFingerprintsNotDifficulty": distinct,
             "distinctSourceSeeds": len(seed_sets[profile]),
-            "hundredRealDraftInputsSupplied": len(records) == 100,
+            "hundredPrototypeDraftInputsSupplied": len(records) == 100,
             "hundredDistinctGameplayStructuresSupplied": len(records) == distinct == 100,
             "referencePackManifestSha256": preview_sha,
             "referencePackIsSigned": False,
             "fiveBotEngineSimulationAndWINPassed": False,
             "productionReleaseAuthorized": False,
         })
-    provided_full = all(g["hundredRealDraftInputsSupplied"] for g in groups)
+    provided_full = all(g["hundredPrototypeDraftInputsSupplied"] for g in groups)
     distinct_full = all(g["hundredDistinctGameplayStructuresSupplied"] for g in groups)
     matrix = {
         "LFX-M11-001": "FRESH_WINDOWS_INSTALL_NOT_RUN",
