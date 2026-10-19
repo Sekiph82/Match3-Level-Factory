@@ -52,6 +52,44 @@ For the separate original FX geometry preview use **Neutral FX rehearsal**.
 Reduced-effects mode displays one static frame. Both inspectors stay in
 Editor-only assemblies and must never appear in exported games.
 
+## M09 whole-milestone offline release preflight
+
+`Tools/UltraGem/m09_milestone_preflight.py` is the single read-only M09
+integration entry for all 10 pack-release tasks. It composes the existing
+`preview_pack`, `preview_diff`, `release_plan`, rights/file inventory and
+bounded real ZIP scanner. It returns a 10-task evidence matrix, five-title ×
+three-platform local planning outputs, unsigned SHA-256 preview envelope,
+unverified rollback/diff proposals and explicit unmet acceptance gates.
+
+Example (from an existing Python environment with the repo's locked dependencies):
+
+```python
+from m09_milestone_preflight import preflight_m09_milestone
+from preview_pack import build_preview_pack
+
+# Load already locally reviewed, validated LevelDraft dictionaries; do not
+# substitute Engine-certified records or publish results.
+preview = build_preview_pack(drafts, channel="local")
+receipt = preflight_m09_milestone(
+    proposed=preview,
+    git_commit_sha=exact_40_character_local_git_head,
+    locales=["en", "tr"],
+)
+assert receipt["publishAuthorized"] is False
+assert receipt["officialMilestonePass"] is False
+```
+
+Optional `previous` accepts only a previous **local preview**, not an accepted
+production release. Optional `inventory` and `archive_bytes` must be provided
+together and undergo the actual ZIP byte/rights scan. All output is in memory:
+there is no staging write, signed release, remote lock, R2/HTTP request, pointer
+switch, mobile runtime build, Engine simulation or release authorization.
+Python coverage lives in
+`Tools/UltraGem/tests/test_m09_milestone_preflight.py`.
+Unit evidence must be rerun on the target Windows checkout before signoff.
+`ENG-M24`, licensed content approval, owner review and signed release gates
+remain blocked.
+
 The Unity EditMode tests use the installed Unity 6000.6.5f1 editor and can be
 run with `-runTests -testPlatform editmode`. Source revisions, notices, and
 file-level import hashes are recorded under `Tools/UltraGem/upstream` and
