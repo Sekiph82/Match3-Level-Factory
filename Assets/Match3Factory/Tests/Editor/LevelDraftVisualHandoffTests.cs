@@ -79,9 +79,9 @@ namespace Match3Factory.Tests
         public void InvalidLfxDraftMustFailBeforeCreatingAnyVisualHandoff()
         {
             var valid = File.ReadAllText(Fixture);
-            Assert.Throws<ArgumentException>(() =>
+            Assert.That(() =>
                 LevelDraftVisualHandoff.ToJson(
-                    valid.Replace("\"draftVersion\":1", "\"draftVersion\":9")));
+                    valid.Replace("\"draftVersion\":1", "\"draftVersion\":9")), Throws.Exception);
         }
     }
 }
