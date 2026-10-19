@@ -135,7 +135,7 @@ Developer smoke example from the project's Python environment:
 
 ```powershell
 $env:PYTHONPATH = "Tools/UltraGem"
-python -m unittest Tools.UltraGem.tests.test_m11_milestone_qualification -v
+python -m unittest discover -s Tools/UltraGem/tests -p test_m11_milestone_qualification.py -v
 ```
 
 For a single record use the existing
