@@ -152,6 +152,35 @@ separate acceptance gates, not a side effect of this receipt. A real
 test invocation in the current Windows checkout must be recorded before
 claiming this source milestone's tests PASS.
 
+### Bounded campaign candidate workbench
+
+`Tools/Match3 Factory/Campaign Generation Workbench` (also linked from
+Level Draft Studio) runs `Tools/UltraGem/campaign_generation_workbench.py`
+through one bounded Python subprocess per donor candidate. It supports one
+profile or all five, deterministic seed ranges, 1..100 attempts per profile,
+per-candidate timeouts, live progress, cancel-after-current-candidate, resumable checkpoints,
+strict LevelDraft/SHA revalidation, and cross-attempt near-duplicate checks.
+The default output is a unique folder under project-local `Artifacts/`; the
+generator refuses existing run folders and never exports into `Assets` by
+default. The CLI takes the same options; use a new unique
+`--output-relative Artifacts/<run-name>` for a new batch and add `--resume`
+only with the exact original profile, seed, budget, and board configuration.
+
+Candidate records preserve donor repository/revision, seed, profile,
+reference observations, profile findings, duplicate links, and canonical
+draft SHA-256. `sha256-manifest.json` is deterministic; wall-clock timings
+are separated in `run-metrics.json`. Generated and owner-review counts are
+separate. Donor rankings are not Engine difficulty, and all outputs remain
+`PROTOTYPE_ONLY`, `engineStatus=BLOCKED_ENG_M24`.
+
+Current local profile compatibility rejects `ultragem.goal.*` donor targets
+because their semantics are not mapped to an accepted Factory goal contract.
+Do not rewrite these goals to placeholders to increase the counts. Resolve
+the supported goal mapping with the Factory/Engine contract before expecting
+any donor output to become a unique owner-review candidate. Editor window
+interaction and Unity EditMode compilation remain separate checks; this
+source-level integration does not claim those checks ran.
+
 ## M12 whole-milestone offline LiveOps/Event preview
 
 `Tools/UltraGem/m12_milestone_preflight.py` evaluates all 13 M12
