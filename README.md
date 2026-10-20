@@ -220,6 +220,42 @@ The module's return remains `M13_OFFLINE_WORKBENCH_REVIEW_ONLY` with
 player-ledger mutation, production catalog publish or owner signoff occurs.
 Source/test review is **not** a claim that the Windows suite has run.
 
+## M14 final release-readiness gap review (not a release)
+
+`Tools/UltraGem/m14_release_readiness.py` checks **all 12 M14 tasks in a
+single source-only audit**. It accepts the actual *offline receipts* generated
+by the existing M09 (pack), M10 (content safety), M11 (draft coverage), M12
+(events/child policy) and M13 (economy/catalog) modules, checks each stage's
+complete task matrix, explicit blocked Engine state, shared claimed source
+commit and anti-promotion flags, and requires five-title policy coverage.
+The M11 source count remains PROTOTYPE input counts, not Engine-accepted
+campaign levels or verified five-bot wins. Contradictory 500/500 input and
+structure claims are rejected.
+
+Optional future capabilities (timed/endless, competitions, social,
+leaderboards, behavior targeting, ads and IAP) must be explicitly disabled
+for ALL five profiles. Changing only the local audit result never edits the
+runtime flags, player data, cloud config or release records. A single
+SHA-256 in its output fingerprints a **source-only observation**, not a
+signed manifest, SDK pin or production trust chain.
+
+The corresponding tests reside in
+`Tools/UltraGem/tests/test_m14_release_readiness.py`. To validate on
+the owner's pinned Windows Python checkout without launching Unity:
+
+```powershell
+python -m unittest discover -s Tools/UltraGem/tests -p test_m14_release_readiness.py -v
+python -m unittest discover -s Tools/UltraGem/tests -v
+```
+
+Even with passing tests, `M14_OFFLINE_RELEASE_READINESS_GAP_REPORT_ONLY`
+must return `engineStatus=BLOCKED_ENG_M24`, `productionAuthorized=false`
+and `officialMilestonePass=false`. This module does NOT run Unity,
+Windows/Android/iOS player builds, App Store/Play Store requests, R2 reads
+or writes, real solver bots/Engine replays, owner/legal independent review,
+a live rollback or a source release tag. Do not claim v1.0 accepted until
+those separately evidenced gates are actually fulfilled.
+
 The Unity EditMode tests use the installed Unity 6000.6.5f1 editor and can be
 run with `-runTests -testPlatform editmode`. Source revisions, notices, and
 file-level import hashes are recorded under `Tools/UltraGem/upstream` and
