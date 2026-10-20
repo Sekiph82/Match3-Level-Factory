@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
@@ -26,14 +27,20 @@ namespace Match3Factory
         private sealed class SummaryEnvelope
         {
             public string resultStatus;
+            public int workbenchVersion;
             public int generationAttempts;
             public int sourceBackedCandidateOutputs;
+            public int donorOriginalOutputCount;
+            public int unresolvedGoalRejectionCount;
+            public int derivedLocalAuthoringProposalCount;
+            public int locallyAuthorableUniqueDraftCount;
             public int generatedReferenceCandidates;
             public int uniqueOwnerReviewCandidates;
             public int ownerApprovedCandidates;
             public int engineQualifiedCampaignLevels;
             public string engineStatus;
             public CandidateSummary[] records;
+            public ProposalSummary[] localGoalProposals;
         }
 
         [Serializable]
@@ -50,6 +57,85 @@ namespace Match3Factory
             public string triageStatus;
             public string triageReason;
             public string duplicateOf;
+            public string goalContractStatus;
+            public string sourceGoalSummary;
+            public string localAuthoringStatus;
+            public ProposalReference localGoalProposal;
+            public string donorRevision;
+            public string donorSourceRepository;
+            public GoalContractDiagnosis goalContractDiagnosis;
+        }
+
+        [Serializable]
+        private sealed class GoalContractDiagnosis
+        {
+            public string status;
+            public string reasonCode;
+            public DonorGoalFinding[] goals;
+        }
+
+        [Serializable]
+        private sealed class DonorGoalFinding
+        {
+            public string sourceTargetId;
+            public string status;
+            public string donorMeaning;
+            public string targetCountMeaning;
+            public string difficultyHypothesisMeaning;
+            public string localEquivalence;
+            public string reasonCode;
+        }
+
+        [Serializable]
+        private sealed class LocalSampleDiagnostics
+        {
+            public string status;
+            public LocalSampleFinding[] findings;
+        }
+
+        [Serializable]
+        private sealed class LocalSampleFinding
+        {
+            public string code;
+            public string reason;
+        }
+
+        [Serializable]
+        private sealed class ProposalUniqueness
+        {
+            public string status;
+            public string duplicateOf;
+        }
+
+        [Serializable]
+        private sealed class ProposalReference
+        {
+            public string status;
+            public string recordPath;
+            public string recordSha256;
+            public string draftSha256;
+            public string sourceRecordPath;
+            public string sourceDraftSha256;
+            public string localAuthoringStatus;
+            public string uniquenessStatus;
+        }
+
+        [Serializable]
+        private sealed class ProposalSummary
+        {
+            public string profileId;
+            public string candidateId;
+            public int attempt;
+            public int donorSeed;
+            public string sourceDraftSha256;
+            public string sourceRecordPath;
+            public string sourceRecordSha256;
+            public string status;
+            public string recordPath;
+            public string recordSha256;
+            public string draftSha256;
+            public string localAuthoringStatus;
+            public string uniquenessStatus;
         }
 
         [Serializable]
@@ -59,7 +145,43 @@ namespace Match3Factory
             public string triageStatus;
             public string triageReason;
             public string draftSha256;
+            public string profileId;
+            public int donorSeed;
+            public ProposalReference localGoalProposal;
             public LevelDraft draft;
+        }
+
+        [Serializable]
+        private sealed class LocalGoalProposalEnvelope
+        {
+            public string artifactKind;
+            public string artifactStatus;
+            public bool sourceGenerated;
+            public string sourceRecordPath;
+            public string sourceDraftSha256;
+            public string authoredLocalGoalProposalSha256;
+            public string localAuthoringStatus;
+            public string engineStatus;
+            public bool engineQualified;
+            public bool ownerApproved;
+            public bool releaseAuthorized;
+            public ProposalAuthoring authoring;
+            public GoalDraft[] originalDonorGoals;
+            public GoalContractDiagnosis goalContractDiagnosis;
+            public LocalSampleDiagnostics localAuthoringDiagnostics;
+            public ProposalUniqueness uniqueness;
+            public LevelDraft draft;
+        }
+
+        [Serializable]
+        private sealed class ProposalAuthoring
+        {
+            public bool donorDifficultyHypothesisInherited;
+            public bool donorTargetCountInherited;
+            public bool donorMoveBudgetInherited;
+            public bool winClaim;
+            public string targetId;
+            public int targetCount;
         }
 
         [Serializable]
@@ -71,6 +193,12 @@ namespace Match3Factory
             public string profileId;
             public int attempt;
             public int uniqueOwnerReviewCandidates;
+        }
+
+        [Serializable]
+        private sealed class RunConfigurationEnvelope
+        {
+            public int workbenchVersion;
         }
 
         private readonly object outputLock = new object();
@@ -89,15 +217,21 @@ namespace Match3Factory
         private int timeoutSeconds = 30;
         private float nearDuplicateThreshold = .95f;
         private string outputRelative;
+        private SummaryEnvelope loadedSummary;
         private CandidateEnvelope selectedCandidate;
+        private LocalGoalProposalEnvelope selectedProposal;
         private LevelDraft selectedDraft;
+        private string selectedArtifactPath;
+        private bool showSourceCandidates = true;
+        private bool showLocalProposals = true;
+        private string statusFilter = "All statuses";
         private Process process;
         private bool cancelRequested;
         private bool cancelMarkerWritten;
         private string processStatus = "Idle · reference-only · ENG-M24 blocked";
         private Label statusLabel;
         private Label summaryLabel;
-        private VisualElement candidateQueue;
+        private ScrollView candidateQueue;
         private VisualElement boardPreview;
         private TextField outputField;
         private bool windowEnabled;
@@ -187,13 +321,27 @@ namespace Match3Factory
             summaryLabel = new Label("No batch summary loaded.") { name = "campaign-summary" };
             summaryLabel.style.whiteSpace = WhiteSpace.Normal;
             rootVisualElement.Add(summaryLabel);
-            rootVisualElement.Add(new Label("Candidate queue · generated/rejected/near duplicate outcomes"));
-            candidateQueue = new VisualElement { name = "campaign-candidate-queue" };
+            rootVisualElement.Add(new Label("Review queue · source drafts and separate local preview alternatives"));
+            var filters = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap } };
+            var sourceToggle = new Toggle("Original donor outputs") { value = showSourceCandidates };
+            sourceToggle.RegisterValueChangedCallback(evt => { showSourceCandidates = evt.newValue; RefreshLoadedQueue(); });
+            filters.Add(sourceToggle);
+            var proposalToggle = new Toggle("Locally authored preview alternatives") { value = showLocalProposals };
+            proposalToggle.RegisterValueChangedCallback(evt => { showLocalProposals = evt.newValue; RefreshLoadedQueue(); });
+            filters.Add(proposalToggle);
+            var statusChoices = new List<string> { "All statuses", "Unique", "Near duplicate", "Duplicate", "Rejected / failed" };
+            var statusDropdown = new DropdownField("Structure/status group", statusChoices, statusFilter);
+            statusDropdown.RegisterValueChangedCallback(evt => { statusFilter = evt.newValue; RefreshLoadedQueue(); });
+            filters.Add(statusDropdown);
+            rootVisualElement.Add(filters);
+            candidateQueue = new ScrollView { name = "campaign-candidate-queue" };
+            candidateQueue.style.maxHeight = 220;
             rootVisualElement.Add(candidateQueue);
-            rootVisualElement.Add(new Label("Selected board preview"));
+            rootVisualElement.Add(new Label("Selected board and goal provenance"));
             boardPreview = new VisualElement { name = "campaign-board-preview" };
             rootVisualElement.Add(boardPreview);
             rootVisualElement.Add(MakeButton("Export selected · reference only", ExportSelectedReference));
+            rootVisualElement.Add(MakeButton("Reveal selected review artifact", RevealSelectedArtifact));
             rootVisualElement.Add(new HelpBox(
                 "Unity EditorWindow DPI, clipping, and interactive appearance require a manual editor check. This workbench does not create Player builds or call ADB.",
                 HelpBoxMessageType.Info));
@@ -251,6 +399,26 @@ namespace Match3Factory
                 return;
             }
             outputRelative = full.Substring(root.Length).Replace('\\', '/');
+            string configPath = Path.Combine(full, "run-config.json");
+            if (!File.Exists(configPath))
+            {
+                EditorUtility.DisplayDialog("Resume unavailable", "This folder has no authenticated workbench run configuration. It remains untouched.", "OK");
+                return;
+            }
+            try
+            {
+                var run = JsonUtility.FromJson<RunConfigurationEnvelope>(File.ReadAllText(configPath));
+                if (run == null || run.workbenchVersion != 2)
+                {
+                    EditorUtility.DisplayDialog("R01 run is read-only", "Older campaign workbench runs can be loaded from their summary for review, but R02 does not resume, migrate, or rewrite their checkpoints. Start a new R02 run.", "OK");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog("Resume unavailable", "Run configuration is invalid: " + ex.Message, "OK");
+                return;
+            }
             if (!ValidateParameters(out string error))
             {
                 EditorUtility.DisplayDialog("Unsafe batch parameters", "Resume values must match the original run. " + error, "OK");
@@ -445,7 +613,21 @@ namespace Match3Factory
 
         private void LoadSummary()
         {
-            if (string.IsNullOrEmpty(outputRelative)) return;
+            if (string.IsNullOrEmpty(outputRelative))
+            {
+                string selected = EditorUtility.OpenFilePanel("Load a campaign run summary for read-only review", Path.Combine(ProjectRoot, "Artifacts"), "json");
+                if (string.IsNullOrEmpty(selected)) return;
+                string full = Path.GetFullPath(selected);
+                string artifactRoot = Path.GetFullPath(Path.Combine(ProjectRoot, "Artifacts")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (!full.StartsWith(artifactRoot, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(Path.GetFileName(full), "summary.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    EditorUtility.DisplayDialog("Invalid run summary", "Choose a summary.json inside this project's Artifacts folder. The selected file was not changed.", "OK");
+                    return;
+                }
+                outputRelative = Path.GetDirectoryName(full).Substring(Path.GetFullPath(ProjectRoot).TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace('\\', '/');
+                if (outputField != null) outputField.value = outputRelative;
+            }
             string path = Path.Combine(ProjectRoot, outputRelative, "summary.json");
             if (!File.Exists(path))
             {
@@ -455,9 +637,10 @@ namespace Match3Factory
             try
             {
                 var summary = JsonUtility.FromJson<SummaryEnvelope>(File.ReadAllText(path));
+                loadedSummary = summary;
                 if (summaryLabel != null)
-                    summaryLabel.text = $"{summary.resultStatus} · jobs {summary.generationAttempts} · source-backed outputs {summary.sourceBackedCandidateOutputs} · locally eligible {summary.generatedReferenceCandidates} · unique owner review {summary.uniqueOwnerReviewCandidates} · owner approved {summary.ownerApprovedCandidates} · Engine qualified {summary.engineQualifiedCampaignLevels} · {summary.engineStatus}";
-                BuildQueue(summary.records ?? Array.Empty<CandidateSummary>());
+                    summaryLabel.text = $"{summary.resultStatus} v{summary.workbenchVersion} · donor attempts {summary.generationAttempts} · original donor outputs {summary.donorOriginalOutputCount} · unresolved donor goals {summary.unresolvedGoalRejectionCount} · derived local proposals {summary.derivedLocalAuthoringProposalCount} · locally authorable unique {summary.locallyAuthorableUniqueDraftCount} · owner approved {summary.ownerApprovedCandidates} · Engine qualified {summary.engineQualifiedCampaignLevels} · {summary.engineStatus}";
+                RefreshLoadedQueue();
             }
             catch (Exception ex)
             {
@@ -465,32 +648,103 @@ namespace Match3Factory
             }
         }
 
-        private void BuildQueue(IEnumerable<CandidateSummary> records)
+        private void RefreshLoadedQueue()
         {
-            if (candidateQueue == null) return;
+            if (candidateQueue == null || loadedSummary == null) return;
             candidateQueue.Clear();
-            foreach (var record in records)
+            if (showSourceCandidates)
             {
-                string path = record.recordPath;
-                var button = MakeButton($"{record.profileId} · #{record.attempt} · {record.triageStatus} · seed {record.donorSeed}", () => SelectCandidate(path));
-                button.tooltip = record.triageReason + " · SHA-256 " + record.draftSha256;
-                candidateQueue.Add(button);
+                foreach (var record in loadedSummary.records ?? Array.Empty<CandidateSummary>())
+                {
+                    if (!MatchesStatusFilter(record.triageStatus)) continue;
+                    string path = record.recordPath;
+                    var button = MakeButton($"SOURCE · {record.profileId} · #{record.attempt} · {record.triageStatus} · {record.sourceGoalSummary}", () => SelectCandidate(path, record.recordSha256));
+                    button.tooltip = record.triageReason + " · original LevelDraft SHA-256 " + record.draftSha256;
+                    candidateQueue.Add(button);
+                }
             }
-            if (!records.Any()) candidateQueue.Add(new Label("No candidate records in this run."));
+            if (showLocalProposals)
+            {
+                foreach (var proposal in loadedSummary.localGoalProposals ?? Array.Empty<ProposalSummary>())
+                {
+                    if (!MatchesStatusFilter(proposal.uniquenessStatus)) continue;
+                    var button = MakeButton($"DERIVED PREVIEW · {proposal.profileId} · #{proposal.attempt} · {proposal.localAuthoringStatus} · {proposal.uniquenessStatus}", () => SelectLocalProposal(proposal));
+                    button.tooltip = $"Original goal retained in source record · source {proposal.sourceDraftSha256} → local proposal {proposal.draftSha256}";
+                    candidateQueue.Add(button);
+                }
+            }
+            if (candidateQueue.childCount == 0)
+                candidateQueue.Add(new Label("No source or derived records match the selected filters."));
         }
 
-        private void SelectCandidate(string relativeRecordPath)
+        private bool MatchesStatusFilter(string status)
         {
-            string path = Path.GetFullPath(Path.Combine(ProjectRoot, outputRelative, relativeRecordPath));
+            if (statusFilter == "All statuses") return true;
+            status = status ?? string.Empty;
+            if (statusFilter == "Unique") return status.StartsWith("UNIQUE", StringComparison.Ordinal) || status == "LOCALLY_AUTHORABLE_UNIQUE_PREVIEW_ONLY";
+            if (statusFilter == "Near duplicate") return status.Contains("NEAR_DUPLICATE");
+            if (statusFilter == "Duplicate") return status.Contains("DUPLICATE") && !status.Contains("NEAR_DUPLICATE");
+            return !(status.StartsWith("UNIQUE", StringComparison.Ordinal) ||
+                     status == "LOCALLY_AUTHORABLE_UNIQUE_PREVIEW_ONLY" || status.Contains("DUPLICATE"));
+        }
+
+        private string ResolveRunArtifact(string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(outputRelative) || string.IsNullOrWhiteSpace(relativePath) ||
+                Path.IsPathRooted(relativePath) || relativePath.Split('/', '\\').Any(part => part == ".."))
+                throw new InvalidOperationException("The review artifact path is unsafe.");
             string root = Path.GetFullPath(Path.Combine(ProjectRoot, outputRelative)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+            string full = Path.GetFullPath(Path.Combine(root, relativePath));
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The review artifact resolves outside its unique run folder.");
+            return full;
+        }
+
+        private static string Sha256Bytes(byte[] bytes)
+        {
+            using (var hash = SHA256.Create())
+                return string.Concat(hash.ComputeHash(bytes).Select(value => value.ToString("x2", System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        private static string FormatGoals(IEnumerable<GoalDraft> goals)
+        {
+            return string.Join(", ", (goals ?? Enumerable.Empty<GoalDraft>())
+                .Select(goal => goal == null ? "<invalid>" : $"{goal.goalId}:{goal.targetId}={goal.targetCount}"));
+        }
+
+        private static string FormatDonorGoalDiagnosis(GoalContractDiagnosis diagnosis)
+        {
+            if (diagnosis == null || diagnosis.goals == null || diagnosis.goals.Length == 0)
+                return "R01 record has no R02 goal diagnosis; source bytes retained unchanged.";
+            return string.Join("\n", diagnosis.goals.Select(goal =>
+                $"{goal.sourceTargetId} · {goal.status} · {goal.reasonCode}\n{goal.donorMeaning}\n{goal.targetCountMeaning}"));
+        }
+
+        private static string FormatLocalFindings(LocalSampleDiagnostics diagnostics)
+        {
+            if (diagnostics == null) return "Local preview diagnostics unavailable.";
+            if (diagnostics.findings == null || diagnostics.findings.Length == 0) return diagnostics.status;
+            return diagnostics.status + " · " + string.Join("; ", diagnostics.findings.Select(item => item.code + ": " + item.reason));
+        }
+
+        private void SelectCandidate(string relativeRecordPath, string expectedRecordSha)
+        {
+            string path;
+            try { path = ResolveRunArtifact(relativeRecordPath); }
+            catch (Exception ex) { EditorUtility.DisplayDialog("Candidate record unavailable", ex.Message, "OK"); return; }
+            if (!File.Exists(path))
             {
                 EditorUtility.DisplayDialog("Candidate record unavailable", "The selected record is missing or outside this run.", "OK");
                 return;
             }
             try
             {
-                selectedCandidate = JsonUtility.FromJson<CandidateEnvelope>(File.ReadAllText(path));
+                byte[] raw = File.ReadAllBytes(path);
+                if (!string.Equals(Sha256Bytes(raw), expectedRecordSha, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Candidate record SHA-256 does not match summary.json.");
+                selectedCandidate = JsonUtility.FromJson<CandidateEnvelope>(Encoding.UTF8.GetString(raw));
+                selectedProposal = null;
+                selectedArtifactPath = path;
                 if (selectedCandidate == null || selectedCandidate.draft == null)
                 {
                     selectedDraft = null;
@@ -498,18 +752,74 @@ namespace Match3Factory
                     return;
                 }
                 var errors = selectedCandidate.draft.Validate();
-                errors.AddRange(GameProfileCatalog.ValidateDraft(selectedCandidate.draft));
                 if (errors.Count > 0) throw new InvalidOperationException(string.Join("\n", errors));
                 string actualSha = LevelDraftJson.Sha256(selectedCandidate.draft);
                 if (!string.Equals(actualSha, selectedCandidate.draftSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Draft SHA-256 does not match the candidate record.");
                 selectedDraft = selectedCandidate.draft;
-                RenderBoardPreview($"{selectedCandidate.candidateId}\n{selectedCandidate.triageStatus} · {selectedCandidate.triageReason}\nSHA-256 {actualSha}\nPROTOTYPE_ONLY · ENG-M24 BLOCKED");
+                var capabilityErrors = GameProfileCatalog.ValidateDraft(selectedCandidate.draft);
+                string capabilityStatus = capabilityErrors.Count == 0 ? "local profile check passed" : "local profile check rejected: " + string.Join("; ", capabilityErrors);
+                RenderBoardPreview($"ORIGINAL DONOR · {selectedCandidate.candidateId}\n{selectedCandidate.triageStatus} · {selectedCandidate.triageReason}\nOriginal goal(s): {FormatGoals(selectedDraft.goals)}\nGoal contract: {selectedCandidate.goalContractStatus ?? "R01 record · diagnosis not stored"}\n{FormatDonorGoalDiagnosis(selectedCandidate.goalContractDiagnosis)}\nDonor provenance: {selectedCandidate.donorSourceRepository}@{selectedCandidate.donorRevision}\nSHA-256 {actualSha}\n{capabilityStatus}\nPROTOTYPE_ONLY · ENGINE_NOT_RUN · ENG-M24 BLOCKED");
             }
             catch (Exception ex)
             {
                 selectedDraft = null;
                 RenderBoardPreview("Candidate rejected by Unity's strict parser: " + ex.Message);
+            }
+        }
+
+        private void SelectLocalProposal(ProposalSummary summary)
+        {
+            try
+            {
+                string proposalPath = ResolveRunArtifact(summary.recordPath);
+                byte[] proposalBytes = File.ReadAllBytes(proposalPath);
+                if (!string.Equals(Sha256Bytes(proposalBytes), summary.recordSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Derived proposal record SHA-256 does not match summary.json.");
+                selectedProposal = JsonUtility.FromJson<LocalGoalProposalEnvelope>(Encoding.UTF8.GetString(proposalBytes));
+                if (selectedProposal == null || selectedProposal.draft == null ||
+                    selectedProposal.artifactKind != "FACTORY_AUTHORED_LOCAL_PREVIEW_GOAL_ALTERNATIVE" ||
+                    selectedProposal.artifactStatus != "LOCALLY_AUTHORED_PREVIEW_ONLY" ||
+                    selectedProposal.sourceGenerated || selectedProposal.engineStatus != "BLOCKED_ENG_M24" ||
+                    selectedProposal.engineQualified || selectedProposal.ownerApproved || selectedProposal.releaseAuthorized)
+                    throw new InvalidOperationException("Derived proposal authority labels are invalid.");
+                if (selectedProposal.localAuthoringStatus != summary.localAuthoringStatus ||
+                    selectedProposal.uniqueness == null || selectedProposal.uniqueness.status != summary.uniquenessStatus)
+                    throw new InvalidOperationException("Proposal review status disagrees with summary.json.");
+                string sourcePath = ResolveRunArtifact(selectedProposal.sourceRecordPath);
+                byte[] sourceBytes = File.ReadAllBytes(sourcePath);
+                if (!string.Equals(Sha256Bytes(sourceBytes), summary.sourceRecordSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Original source record SHA-256 does not match summary.json.");
+                selectedCandidate = JsonUtility.FromJson<CandidateEnvelope>(Encoding.UTF8.GetString(sourceBytes));
+                if (selectedCandidate == null || selectedCandidate.draft == null ||
+                    !string.Equals(LevelDraftJson.Sha256(selectedCandidate.draft), selectedProposal.sourceDraftSha256, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(selectedProposal.sourceDraftSha256, summary.sourceDraftSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Source-to-derived LevelDraft hash chain is invalid.");
+                if (selectedProposal.originalDonorGoals == null ||
+                    FormatGoals(selectedProposal.originalDonorGoals) != FormatGoals(selectedCandidate.draft.goals))
+                    throw new InvalidOperationException("The derived proposal does not retain the original donor goals.");
+                if (selectedProposal.authoring == null || selectedProposal.authoring.donorDifficultyHypothesisInherited ||
+                    selectedProposal.authoring.donorTargetCountInherited || selectedProposal.authoring.donorMoveBudgetInherited ||
+                    selectedProposal.authoring.winClaim || selectedProposal.authoring.targetId != "sample.score" ||
+                    selectedProposal.authoring.targetCount != 500)
+                    throw new InvalidOperationException("Local proposal contains inherited donor difficulty, target, move-budget, or WIN claims.");
+                var errors = selectedProposal.draft.Validate();
+                if (errors.Count > 0) throw new InvalidOperationException(string.Join("\n", errors));
+                string actualSha = LevelDraftJson.Sha256(selectedProposal.draft);
+                if (!string.Equals(actualSha, selectedProposal.authoredLocalGoalProposalSha256, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(actualSha, summary.draftSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Derived LevelDraft SHA-256 does not match the proposal chain.");
+                selectedDraft = selectedProposal.draft;
+                selectedArtifactPath = proposalPath;
+                var capabilityErrors = GameProfileCatalog.ValidateDraft(selectedDraft);
+                string capabilityStatus = capabilityErrors.Count == 0 ? "local profile check passed" : "local profile check rejected: " + string.Join("; ", capabilityErrors);
+                RenderBoardPreview($"LOCALLY AUTHORED PREVIEW ONLY · {summary.candidateId}\nOriginal donor goal(s): {FormatGoals(selectedCandidate.draft.goals)}\n{FormatDonorGoalDiagnosis(selectedProposal.goalContractDiagnosis)}\nSeparate local proposal: {FormatGoals(selectedDraft.goals)}\n{FormatLocalFindings(selectedProposal.localAuthoringDiagnostics)}\nSource SHA-256 {selectedProposal.sourceDraftSha256}\nDerived SHA-256 {actualSha}\n{summary.localAuthoringStatus} · {capabilityStatus}\nDonor ranking, targetCount, move budget, difficulty, and WIN were not inherited.\nPROTOTYPE_ONLY · ENGINE_NOT_RUN · ENG-M24 BLOCKED");
+            }
+            catch (Exception ex)
+            {
+                selectedDraft = null;
+                EditorUtility.DisplayDialog("Proposal integrity check failed", ex.Message, "OK");
+                RenderBoardPreview("Derived proposal failed provenance or schema verification: " + ex.Message);
             }
         }
 
@@ -541,7 +851,7 @@ namespace Match3Factory
 
         private void ExportSelectedReference()
         {
-            if (selectedDraft == null || selectedCandidate == null || selectedCandidate.triageStatus != "UNIQUE_OWNER_REVIEW_CANDIDATE")
+            if (selectedDraft == null || selectedCandidate == null || selectedProposal != null || selectedCandidate.triageStatus != "UNIQUE_OWNER_REVIEW_CANDIDATE")
             {
                 EditorUtility.DisplayDialog("Export unavailable", "Only locally prefiltered, unique owner-review candidates can be exported. Rejected or unresolved candidates remain in their QA record for inspection.", "OK");
                 return;
@@ -569,6 +879,16 @@ namespace Match3Factory
             {
                 EditorUtility.DisplayDialog("Reference export failed", ex.Message, "OK");
             }
+        }
+
+        private void RevealSelectedArtifact()
+        {
+            if (string.IsNullOrEmpty(selectedArtifactPath) || !File.Exists(selectedArtifactPath))
+            {
+                EditorUtility.DisplayDialog("Review artifact unavailable", "Select a verified source or derived record first.", "OK");
+                return;
+            }
+            EditorUtility.RevealInFinder(selectedArtifactPath);
         }
 
         private void ShowOutputFolder()

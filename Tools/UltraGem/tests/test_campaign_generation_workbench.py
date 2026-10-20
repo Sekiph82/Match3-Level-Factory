@@ -70,6 +70,11 @@ class CampaignGenerationWorkbenchTests(unittest.TestCase):
             self.assertEqual(set(summary["profileResults"]), set(PROFILE_IDS))
             self.assertEqual(summary["engineQualifiedCampaignLevels"], 0)
             self.assertEqual(summary["engineStatus"], "BLOCKED_ENG_M24")
+            self.assertEqual(summary["donorOriginalOutputCount"], 5)
+            self.assertEqual(summary["unresolvedGoalRejectionCount"], 5)
+            self.assertEqual(summary["derivedLocalAuthoringProposalCount"], 5)
+            self.assertEqual(summary["locallyAuthorableUniqueDraftCount"], 0)
+            self.assertEqual(len(summary["localGoalProposals"]), 5)
             self.assertTrue(all(item["profileId"] in PROFILE_IDS for item in summary["records"]))
 
     def test_goal_only_and_color_renaming_variants_are_not_unique(self):
@@ -191,7 +196,77 @@ class CampaignGenerationWorkbenchTests(unittest.TestCase):
             self.assertEqual(body["engineStatus"], "BLOCKED_ENG_M24")
             self.assertGreater(body["coverage"]["activeCellCount"], 0)
             self.assertIn("scoreObservations", body["referenceStatistics"][0]["policies"]["worst"])
+            self.assertEqual(body["goalContractDiagnosis"]["status"], "DONOR_GOAL_DIAGNOSED_LOCAL_EQUIVALENCE_UNRESOLVED")
+            self.assertEqual(body["localGoalProposal"]["status"], "CREATED")
+            proposal = json.loads((out / body["localGoalProposal"]["recordPath"]).read_text(encoding="utf-8"))
+            self.assertEqual(proposal["sourceDraftSha256"], body["draftSha256"])
+            self.assertEqual(proposal["originalDonorGoals"], body["draft"]["goals"])
+            self.assertEqual(proposal["localAuthoringStatus"], "REJECTED_LOCAL_SAMPLE_COMPATIBILITY")
             leveldraft.validate(body["draft"])
+
+    def test_tampered_local_proposal_artifact_hash_blocks_resume(self):
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / "proposal-tamper"
+            summary = self.run_fake(out, config())
+            proposal_path = out / summary["localGoalProposals"][0]["recordPath"]
+            proposal_path.write_text(proposal_path.read_text(encoding="utf-8") + " ", encoding="utf-8")
+            with self.assertRaisesRegex(WorkbenchError, "proposal artifact SHA-256"):
+                run_campaign_batch(config=config(), output_dir=out, resume=True,
+                                   pipeline_runner=self.fake_runner)
+
+    def test_r01_checkpoint_is_read_only_not_silently_migrated(self):
+        from campaign_generation_workbench import _json_bytes, _seal_checkpoint
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / "legacy-r01"
+            self.run_fake(out, config())
+            path = out / "checkpoint.json"
+            checkpoint = json.loads(path.read_text(encoding="utf-8"))
+            checkpoint["checkpointVersion"] = 1
+            checkpoint["workbenchVersion"] = 1
+            path.write_bytes(_json_bytes(_seal_checkpoint(checkpoint), pretty=True))
+            with self.assertRaisesRegex(WorkbenchError, "older checkpoints are read-only"):
+                run_campaign_batch(config=config(), output_dir=out, resume=True,
+                                   pipeline_runner=self.fake_runner)
+
+    def test_wrong_profile_output_is_failed_and_not_counted_or_derived(self):
+        def wrong_profile(**kwargs):
+            result = self.fake_runner(**kwargs)
+            result["drafts"][0]["draft"]["gameProfileId"] = PROFILE_IDS[1]
+            return result
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / "wrong-profile"
+            summary = self.run_fake(out, config(), runner=wrong_profile)
+            self.assertEqual(summary["donorOriginalOutputCount"], 0)
+            self.assertEqual(summary["derivedLocalAuthoringProposalCount"], 0)
+            self.assertEqual(summary["records"][0]["triageStatus"], "FAILED")
+
+    def test_empty_and_underfilled_batches_are_reported_without_fabricated_outputs(self):
+        calls = 0
+        def underfilled(**kwargs):
+            nonlocal calls
+            calls += 1
+            return self.fake_runner(**kwargs) if calls == 1 else {
+                "resultStatus": "REFERENCE_ONLY_UNVERIFIED", "sourceRevision": ULTRAGEM_REVISION,
+                "sourceRepository": "JohannesBuchner/ultragem", "drafts": [],
+                "referenceStatistics": []}
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / "underfilled"
+            summary = self.run_fake(out, config(attempts=2), runner=underfilled)
+            self.assertEqual(summary["generationAttempts"], 2)
+            self.assertEqual(summary["donorOriginalOutputCount"], 1)
+            self.assertEqual(summary["derivedLocalAuthoringProposalCount"], 1)
+            self.assertEqual(summary["profileResults"][PROFILE_IDS[0]]["rejectedOrDuplicate"], 2)
+
+        def empty(**kwargs):
+            return {"resultStatus": "REFERENCE_ONLY_UNVERIFIED", "sourceRevision": ULTRAGEM_REVISION,
+                    "sourceRepository": "JohannesBuchner/ultragem", "drafts": [],
+                    "referenceStatistics": []}
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / "empty"
+            summary = self.run_fake(out, config(), runner=empty)
+            self.assertEqual(summary["donorOriginalOutputCount"], 0)
+            self.assertEqual(summary["derivedLocalAuthoringProposalCount"], 0)
+            self.assertEqual(summary["engineQualifiedCampaignLevels"], 0)
 
     def test_progress_callback_reports_start_each_attempt_and_completion(self):
         with tempfile.TemporaryDirectory() as temp:

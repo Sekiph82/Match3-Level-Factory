@@ -21,11 +21,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 import candidate_diversity
+import campaign_goal_contract
 import leveldraft
 from factory_pipeline import ULTRAGEM_REVISION, run_pipeline
 from profile_compatibility import PROFILE_IDS, diagnose_profile_compatibility
 
-WORKBENCH_VERSION = 1
+WORKBENCH_VERSION = 2
 MAX_ATTEMPTS_PER_PROFILE = 100
 MAX_TOTAL_ATTEMPTS = 500
 MAX_RUN_WORK_UNITS = 4096
@@ -33,6 +34,7 @@ MAX_BATCH_WORK_UNITS = 512_000
 MAX_ARTIFACT_BYTES = 100_000_000
 MAX_CANDIDATE_JSON_BYTES = 2_000_000
 DEFAULT_NEAR_DUPLICATE_THRESHOLD = 0.95
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SAFE_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 
 
@@ -162,8 +164,14 @@ def _read_checkpoint(output_dir: Path, expected_config: dict[str, Any]) -> dict[
         raise WorkbenchError("checkpoint SHA-256 validation failed")
     if checkpoint.get("configuration") != expected_config:
         raise WorkbenchError("resume configuration does not match the original run")
-    if checkpoint.get("workbenchVersion") != WORKBENCH_VERSION or checkpoint.get("sourceRevision") != ULTRAGEM_REVISION:
-        raise WorkbenchError("checkpoint workbench or donor revision is stale")
+    if checkpoint.get("checkpointVersion") != 2:
+        raise WorkbenchError("checkpoint schema is not R02; older checkpoints are read-only and are never migrated")
+    if checkpoint.get("workbenchVersion") != WORKBENCH_VERSION:
+        raise WorkbenchError(
+            f"checkpoint belongs to workbench version {checkpoint.get('workbenchVersion')}; "
+            "R01 checkpoints are read-only under R02 and are never migrated or rewritten")
+    if checkpoint.get("sourceRevision") != ULTRAGEM_REVISION:
+        raise WorkbenchError("checkpoint donor revision is stale")
     if not isinstance(checkpoint.get("records"), list):
         raise WorkbenchError("checkpoint records must be an array")
     for record in checkpoint["records"]:
@@ -188,7 +196,40 @@ def _read_checkpoint(output_dir: Path, expected_config: dict[str, Any]) -> dict[
                     raise WorkbenchError("candidate record draft SHA-256 mismatch")
                 if draft.get("gameProfileId") != record.get("profileId") or draft.get("seed") != record.get("donorSeed"):
                     raise WorkbenchError("candidate record provenance does not match its LevelDraft")
-        except (KeyError, TypeError, json.JSONDecodeError, leveldraft.DraftError) as exc:
+                diagnosis = campaign_goal_contract.diagnose_donor_goals(draft.get("goals"))
+                if value.get("goalContractDiagnosis") != diagnosis:
+                    raise WorkbenchError("candidate donor-goal diagnosis is forged or stale")
+                if value.get("goalContractEvidence") != campaign_goal_contract.source_evidence(PROJECT_ROOT):
+                    raise WorkbenchError("candidate goal-contract source evidence is stale")
+                proposal_ref = value.get("localGoalProposal")
+                if not isinstance(proposal_ref, dict):
+                    raise WorkbenchError("candidate local-goal proposal reference is missing")
+                if proposal_ref.get("status") == "CREATED":
+                    proposal_path_text = proposal_ref.get("recordPath")
+                    if (not isinstance(proposal_path_text, str) or Path(proposal_path_text).is_absolute()
+                            or ".." in Path(proposal_path_text).parts
+                            or not proposal_path_text.startswith("derived-local-goal-proposals/")):
+                        raise WorkbenchError("candidate contains an unsafe local-goal proposal path")
+                    proposal_path = (output_dir / proposal_path_text).resolve()
+                    if not proposal_path.is_relative_to(output_dir.resolve()) or not proposal_path.is_file():
+                        raise WorkbenchError("local-goal proposal is missing or outside the run folder")
+                    proposal_raw = proposal_path.read_bytes()
+                    if _sha256_bytes(proposal_raw) != proposal_ref.get("recordSha256"):
+                        raise WorkbenchError("local-goal proposal artifact SHA-256 validation failed")
+                    proposal = json.loads(proposal_raw)
+                    campaign_goal_contract.validate_local_goal_proposal(
+                        proposal, project_root=PROJECT_ROOT)
+                    if (proposal.get("sourceDraftSha256") != record.get("draftSha256")
+                            or proposal.get("sourceRecordPath") != record.get("recordPath")
+                            or proposal.get("draft", {}).get("gameProfileId") != record.get("profileId")
+                            or proposal_ref.get("sourceRecordPath") != record.get("recordPath")
+                            or proposal_ref.get("sourceDraftSha256") != record.get("draftSha256")):
+                        raise WorkbenchError("local-goal proposal source-to-derived provenance mismatch")
+                    if proposal.get("authoredLocalGoalProposalSha256") != proposal_ref.get("draftSha256"):
+                        raise WorkbenchError("local-goal proposal draft digest disagrees with its source record")
+                elif proposal_ref.get("status") != "NOT_CREATED":
+                    raise WorkbenchError("candidate proposal status is invalid")
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, leveldraft.DraftError) as exc:
             raise WorkbenchError(f"checkpoint contains an invalid candidate record: {exc}") from exc
     return checkpoint
 
@@ -263,6 +304,26 @@ def _run_pipeline_with_timeout(*, timeout_seconds: int, **kwargs: Any) -> dict[s
 
 def _result_summary(checkpoint: dict[str, Any], *, status: str) -> dict[str, Any]:
     records = checkpoint["records"]
+    proposals = []
+    for item in records:
+        reference = item.get("localGoalProposal", {})
+        if reference.get("status") == "CREATED":
+            proposals.append({
+                "profileId": item["profileId"], "candidateId": item["candidateId"],
+                "attempt": item["attempt"], "donorSeed": item["donorSeed"],
+                "sourceDraftSha256": item["draftSha256"],
+                "sourceRecordPath": item["recordPath"],
+                "sourceRecordSha256": item["recordSha256"],
+                **reference,
+            })
+    local_authorable_unique = sum(item.get("localAuthoringStatus") == "LOCALLY_AUTHORABLE_UNIQUE_PREVIEW_ONLY"
+                                  for item in proposals)
+
+    def unresolved_goal(record: dict[str, Any]) -> bool:
+        diagnosis = record.get("goalContractDiagnosis", {})
+        return bool(diagnosis.get("goals")) and any(
+            item.get("localEquivalence") != "ESTABLISHED" for item in diagnosis["goals"])
+
     by_profile = {}
     for profile in checkpoint["configuration"]["profiles"]:
         entries = [item for item in records if item["profileId"] == profile]
@@ -272,6 +333,9 @@ def _result_summary(checkpoint: dict[str, Any], *, status: str) -> dict[str, Any
             "generatedReferenceCandidates": sum(item["localPrefilterStatus"] == "ACCEPTED_FOR_LOCAL_AUTHORING_ONLY" for item in entries),
             "uniqueOwnerReviewCandidates": sum(item["triageStatus"] == "UNIQUE_OWNER_REVIEW_CANDIDATE" for item in entries),
             "rejectedOrDuplicate": sum(item["triageStatus"] != "UNIQUE_OWNER_REVIEW_CANDIDATE" for item in entries),
+            "unresolvedGoalRejections": sum(unresolved_goal(item) for item in entries),
+            "derivedLocalAuthoringProposals": sum(item.get("localGoalProposal", {}).get("status") == "CREATED" for item in entries),
+            "locallyAuthorableUniqueDrafts": sum(item.get("localGoalProposal", {}).get("localAuthoringStatus") == "LOCALLY_AUTHORABLE_UNIQUE_PREVIEW_ONLY" for item in entries),
         }
     return {
         "workbenchVersion": WORKBENCH_VERSION,
@@ -282,6 +346,15 @@ def _result_summary(checkpoint: dict[str, Any], *, status: str) -> dict[str, Any
         "configuration": checkpoint["configuration"],
         "generationAttempts": len(records),
         "sourceBackedCandidateOutputs": sum(item.get("draftSha256") is not None for item in records),
+        "donorOriginalOutputCount": sum(item.get("draftSha256") is not None for item in records),
+        "unresolvedGoalRejectionCount": sum(
+            item.get("draftSha256") is not None and unresolved_goal(item)
+            for item in records),
+        "derivedLocalAuthoringProposalCount": len(proposals),
+        "locallyAuthorableUniqueDraftCount": local_authorable_unique,
+        "localGoalProposals": proposals,
+        "goalContractEvidence": next((item.get("goalContractEvidence") for item in records
+                                       if item.get("goalContractEvidence")), []),
         "generatedReferenceCandidates": sum(x["localPrefilterStatus"] == "ACCEPTED_FOR_LOCAL_AUTHORING_ONLY" for x in records),
         "uniqueOwnerReviewCandidates": sum(x["triageStatus"] == "UNIQUE_OWNER_REVIEW_CANDIDATE" for x in records),
         "ownerApprovedCandidates": 0,
@@ -370,7 +443,7 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
         run_config = {"configuration": config, "sourceRevision": ULTRAGEM_REVISION, "workbenchVersion": WORKBENCH_VERSION}
         _write_new(config_path, _json_bytes(run_config, pretty=True))
         checkpoint = _seal_checkpoint({
-            "checkpointVersion": 1, "workbenchVersion": WORKBENCH_VERSION,
+            "checkpointVersion": 2, "workbenchVersion": WORKBENCH_VERSION,
             "sourceRevision": ULTRAGEM_REVISION, "configuration": config,
             "records": [], "attemptsCompleted": 0, "status": "IN_PROGRESS",
         })
@@ -385,6 +458,7 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
     records = list(checkpoint["records"])
     existing_by_profile = {profile: sum(r["profileId"] == profile for r in records) for profile in config["profiles"]}
     prior_drafts: dict[str, list[tuple[str, dict[str, Any]]]] = {profile: [] for profile in config["profiles"]}
+    prior_local_proposals: dict[str, list[tuple[str, dict[str, Any]]]] = {profile: [] for profile in config["profiles"]}
     all_drafts: list[tuple[str, str, dict[str, Any]]] = []
     for record in records:
         raw = json.loads((output_dir / record["recordPath"]).read_text(encoding="utf-8"))
@@ -392,6 +466,11 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
             draft = raw["draft"]
             prior_drafts[record["profileId"]].append((record["candidateId"], draft))
             all_drafts.append((record["profileId"], record["candidateId"], draft))
+            proposal_ref = raw.get("localGoalProposal", {})
+            if proposal_ref.get("status") == "CREATED":
+                proposal_raw = json.loads((output_dir / proposal_ref["recordPath"]).read_text(encoding="utf-8"))
+                prior_local_proposals[record["profileId"]].append(
+                    (record["candidateId"] + "/local-preview", proposal_raw["draft"]))
 
     metrics_path = output_dir / "run-metrics.json"
     if resume and metrics_path.exists():
@@ -489,9 +568,78 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
                         triage_reason = "PROFILE_COMPATIBILITY_UNRESOLVED"
                     else:
                         triage_status, triage_reason = "UNIQUE_OWNER_REVIEW_CANDIDATE", "UNIQUE_REFERENCE_CANDIDATE"
+                    relative = f"candidates/{profile}/attempt-{attempt:03d}-{draft_sha[:12]}.json"
+                    goal_diagnosis = campaign_goal_contract.diagnose_donor_goals(canonical_draft["goals"])
+                    goal_evidence = campaign_goal_contract.source_evidence(PROJECT_ROOT)
+                    proposal = campaign_goal_contract.build_local_goal_proposal(
+                        source_draft=canonical_draft,
+                        source_draft_sha256=draft_sha,
+                        source_record_path=relative,
+                        source_repository=pipeline["sourceRepository"],
+                        source_revision=pipeline["sourceRevision"],
+                        source_goal_diagnosis=goal_diagnosis,
+                        source_ranking_status=drafts[0]["rankingStatus"],
+                        project_root=PROJECT_ROOT)
+                    if proposal is None:
+                        proposal_ref = {"status": "NOT_CREATED",
+                                        "reasonCode": goal_diagnosis.get("reasonCode", "UNRESOLVED_DONOR_GOAL")}
+                        proposal_id = None
+                        proposal_draft = None
+                    else:
+                        proposal_draft = proposal["draft"]
+                        proposal_id = candidate_id + "/local-preview"
+                        proposal_nearest = None
+                        proposal_duplicate = None
+                        for old_id, old in prior_local_proposals[profile]:
+                            compare = candidate_diversity.compare_drafts(proposal_draft, old)
+                            board_similarity, changed_cells = _board_similarity(proposal_draft, old)
+                            score = max(compare["similarity"], board_similarity)
+                            if score >= config["nearDuplicateThreshold"] and (
+                                    proposal_nearest is None or score > proposal_nearest["similarity"]):
+                                proposal_nearest = {"candidateId": old_id,
+                                                    "similarity": round(score, 8),
+                                                    "changedCellCount": changed_cells,
+                                                    "reason": compare["reason"]}
+                            if compare["reason"] == "EXACT_STRUCTURAL_DUPLICATE":
+                                proposal_duplicate = old_id
+                                break
+                        if proposal_duplicate:
+                            proposal_uniqueness = "REJECTED_DUPLICATE"
+                        elif proposal_nearest:
+                            proposal_uniqueness = "REJECTED_NEAR_DUPLICATE"
+                        else:
+                            proposal_uniqueness = "UNIQUE_LOCAL_PREVIEW_STRUCTURE"
+                        proposal["uniqueness"] = {
+                            "status": proposal_uniqueness,
+                            "duplicateOf": proposal_duplicate,
+                            "nearestCandidate": proposal_nearest,
+                            "threshold": config["nearDuplicateThreshold"],
+                        }
+                        if proposal["localAuthoringDiagnostics"]["status"] != "LOCALLY_AUTHORABLE_PREVIEW_ONLY":
+                            local_authoring_status = "REJECTED_LOCAL_SAMPLE_COMPATIBILITY"
+                        elif proposal_uniqueness != "UNIQUE_LOCAL_PREVIEW_STRUCTURE":
+                            local_authoring_status = proposal_uniqueness
+                        else:
+                            local_authoring_status = "LOCALLY_AUTHORABLE_UNIQUE_PREVIEW_ONLY"
+                        proposal["localAuthoringStatus"] = local_authoring_status
+                        proposal_relative = (f"derived-local-goal-proposals/{profile}/"
+                                             f"attempt-{attempt:03d}-{proposal['authoredLocalGoalProposalSha256'][:12]}.json")
+                        proposal_raw = _json_bytes(proposal, pretty=True)
+                        if len(proposal_raw) > MAX_CANDIDATE_JSON_BYTES:
+                            raise WorkbenchError("derived local-goal proposal exceeds the 2 MB artifact limit")
+                        _write_run_artifact(output_dir, proposal_relative, proposal_raw)
+                        proposal_ref = {
+                            "status": "CREATED", "recordPath": proposal_relative,
+                            "recordSha256": _sha256_bytes(proposal_raw),
+                            "draftSha256": proposal["authoredLocalGoalProposalSha256"],
+                            "sourceRecordPath": relative,
+                            "sourceDraftSha256": draft_sha,
+                            "localAuthoringStatus": local_authoring_status,
+                            "uniquenessStatus": proposal_uniqueness,
+                        }
                     pipeline_candidate = pipeline.get("referenceStatistics", [{}])[0]
                     record_body = {
-                        "recordVersion": 1,
+                        "recordVersion": 2,
                         "candidateId": candidate_id,
                         "profileId": profile,
                         "attempt": attempt,
@@ -504,6 +652,13 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
                         "configuration": pipeline["configuration"],
                         "referenceRankingStatus": drafts[0]["rankingStatus"],
                         "referenceDifficultyHypothesis": drafts[0]["difficultyHypothesis"],
+                        "goalContractDiagnosis": goal_diagnosis,
+                        "goalContractEvidence": goal_evidence,
+                        "goalContractStatus": goal_diagnosis["status"],
+                        "sourceGoalSummary": " | ".join(
+                            f"{item.get('sourceTargetId')} [{item.get('status')}]"
+                            for item in goal_diagnosis["goals"]),
+                        "localGoalProposal": proposal_ref,
                         "referenceStatistics": _reference_observations({"referenceStatistics": [pipeline_candidate]}),
                         "draftSha256": draft_sha,
                         "structuralFingerprint": exact_fingerprint,
@@ -520,7 +675,6 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
                         "ownerApproved": False,
                         "draft": canonical_draft,
                     }
-                    relative = f"candidates/{profile}/attempt-{attempt:03d}-{draft_sha[:12]}.json"
                     raw = _json_bytes(record_body, pretty=True)
                     if len(raw) > MAX_CANDIDATE_JSON_BYTES:
                         raise WorkbenchError("candidate record exceeds the 2 MB artifact limit")
@@ -531,8 +685,18 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
                         "draftSha256": draft_sha, "structuralFingerprint": exact_fingerprint,
                         "localPrefilterStatus": compat["localPolicyStatus"],
                         "triageStatus": triage_status, "triageReason": triage_reason,
+                        "goalContractDiagnosis": goal_diagnosis,
+                        "goalContractEvidence": goal_evidence,
+                        "goalContractStatus": goal_diagnosis["status"],
+                        "sourceGoalSummary": record_body["sourceGoalSummary"],
+                        "donorRevision": pipeline["sourceRevision"],
+                        "donorSourceRepository": pipeline["sourceRepository"],
+                        "localGoalProposal": proposal_ref,
+                        "localAuthoringStatus": proposal_ref.get("localAuthoringStatus", "NOT_CREATED"),
                         "duplicateOf": duplicate_of, "crossProfileCloneOf": cross_profile_clone,
                     }
+                    if proposal_draft is not None:
+                        prior_local_proposals[profile].append((proposal_id, proposal_draft))
                 except Exception as exc:
                     elapsed = time.monotonic() - started
                     failure = {
