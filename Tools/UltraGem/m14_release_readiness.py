@@ -84,9 +84,10 @@ def _review_stage(name: str, record: dict[str, Any], source_git_sha: str) -> dic
         raise ValueError("offline M13 cannot mint any entitlements")
     if name == "M11":
         profiles = record.get("profiles")
-        if (not isinstance(profiles, list) or
-            set(p.get("gameProfileId") for p in profiles if isinstance(p, dict)) != set(PROFILES)
-            or len(profiles) != len(PROFILES)):
+        if (not isinstance(profiles, list) or len(profiles) != len(PROFILES)
+            or any(not isinstance(p, dict)
+                   or not isinstance(p.get("gameProfileId"), str) for p in profiles)
+            or set(p["gameProfileId"] for p in profiles) != set(PROFILES)):
             raise ValueError("M11 must report all five game profiles")
         for p in profiles:
             if (type(p.get("receivedDrafts")) is not int or
@@ -96,10 +97,20 @@ def _review_stage(name: str, record: dict[str, Any], source_git_sha: str) -> dic
                 raise ValueError("M11 profile falsely certified a campaign or Engine WIN")
         if record.get("sourceLevelDraftCount") != sum(x["receivedDrafts"] for x in profiles):
             raise ValueError("M11 per-title input totals mismatch")
+        count_complete = all(x["receivedDrafts"] == 100 for x in profiles)
+        if record.get("allFiveHundredInputDraftsSupplied") is not count_complete:
+            raise ValueError("M11 forged completeness relative to supplied prototype count")
+        distinct_complete = all(
+            x.get("hundredDistinctGameplayStructuresSupplied") is True
+            for x in profiles)
+        if record.get("allFiveHundredDistinctGameContentStructuresSupplied") is not distinct_complete:
+            raise ValueError("M11 claimed source diversity does not match five title counts")
     if name == "M12":
         policies = record.get("allFiveProfilePolicyDiagnostics")
         if (not isinstance(policies, list) or len(policies) != len(PROFILES)
-                or set(p.get("profileId") for p in policies if isinstance(p, dict)) != set(PROFILES)):
+                or any(not isinstance(p, dict)
+                       or not isinstance(p.get("profileId"), str) for p in policies)
+                or set(p["profileId"] for p in policies) != set(PROFILES)):
             raise ValueError("M12 did not cover five strict policy profiles")
         if any(p.get("adsOrBehavioralTargetingEnabled") is not False
                or p.get("productionPolicyApproved") is not False for p in policies):
@@ -108,7 +119,9 @@ def _review_stage(name: str, record: dict[str, Any], source_git_sha: str) -> dic
         diag = record.get("diagnostics")
         age = diag.get("ageGuards") if isinstance(diag, dict) else None
         if (not isinstance(age, list) or len(age) != len(PROFILES)
-                or set(p.get("profileId") for p in age if isinstance(p, dict)) != set(PROFILES)):
+                or any(not isinstance(p, dict)
+                       or not isinstance(p.get("profileId"), str) for p in age)
+                or set(p["profileId"] for p in age) != set(PROFILES)):
             raise ValueError("M13 age-policy profiles incomplete")
         if any(p.get("adsOrPurchasesEligible") is not False for p in age):
             raise ValueError("M13 enabled real advertisements or IAP for unverified ages")
@@ -166,9 +179,11 @@ def assess_m14_release_readiness(*, m09: dict[str, Any], m10: dict[str, Any],
     prototypes = {p["gameProfileId"]: p["receivedDrafts"] for p in m11["profiles"]}
     if m10.get("gameProfileId") not in PROFILES:
         raise ValueError("M10 offline read proposal does not identify a known title")
-    if m09.get("profiles") is None or not isinstance(m09["profiles"], list) or (
-        any(p not in PROFILES for p in m09["profiles"])):
-        raise ValueError("M09 pack proposal refers to unknown title")
+    if (not isinstance(m09.get("profiles"), list)
+            or not m09["profiles"] or len(m09["profiles"]) > len(PROFILES)
+            or any(not isinstance(p, str) or p not in PROFILES for p in m09["profiles"])
+            or len(m09["profiles"]) != len(set(m09["profiles"]))):
+        raise ValueError("M09 pack proposal refers to unknown/duplicate title")
 
     proof = {
         "upstreamStages": upstream,
