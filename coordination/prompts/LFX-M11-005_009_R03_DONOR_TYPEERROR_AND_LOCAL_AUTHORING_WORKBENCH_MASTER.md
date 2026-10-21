@@ -1,5 +1,8 @@
 # LFX-M11-005 + LFX-M11-009 | R03 donor TypeError repair and genuine local candidate authoring | MASTER HANDOFF
 
+**MANDATORY PRE-FROZEN INDEPENDENT AUDIT:** [15-gate R03 criteria](../../audits/LFX-M11-005_009_R03_FROZEN_AUDIT_CRITERIA_V01.md). Codex must provide complete raw Python test execution logs and reproducible original evidence. ChatGPT will audit the final deliverable against every A00-A14 gate; a builder-reported test PASS is not an independent milestone PASS.
+
+
 **Execution:** ONE consolidated Codex work package. **Authority:** repo-root `TASKS.md` only. This document is a handoff, NOT a second task tracker/new milestone and NOT permission to work on another repository.
 
 **Only permitted repo:** `Sekiph82/Match3-Level-Factory`
