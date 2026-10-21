@@ -199,6 +199,8 @@ namespace Match3Factory
         private sealed class RunConfigurationEnvelope
         {
             public int workbenchVersion;
+            public string sourceRevision;
+            public string configurationSha256;
         }
 
         [Serializable]
@@ -339,7 +341,7 @@ namespace Match3Factory
             rootVisualElement.Add(outputField);
             var actions = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap } };
             actions.Add(MakeButton("Generate new batch", StartNewBatch));
-            actions.Add(MakeButton("Generate original local preview batch (5/profile)", StartLocalAuthoringBatch));
+            actions.Add(MakeButton("Start original local preview batch (max 10/profile)", StartLocalAuthoringBatch));
             actions.Add(MakeButton("Resume batch…", ChooseAndResume));
             actions.Add(MakeButton("Cancel after current candidate", RequestCancel));
             actions.Add(MakeButton("Load run summary", LoadSummary));
@@ -442,14 +444,13 @@ namespace Match3Factory
             outputRelative = Path.Combine("Artifacts", runName).Replace('\\', '/');
             var profileIds = allProfiles ? Profiles : new[] { selectedProfile };
             var args = new List<string> { Quote(script), "--project-root", Quote(ProjectRoot),
-                "--profiles", Quote(string.Join(",", profileIds)), "--attempts-per-profile", "5",
+                "--profiles", Quote(string.Join(",", profileIds)), "--attempts-per-profile", Math.Max(1, Math.Min(10, attemptsPerProfile)).ToString(),
                 "--seed-start", seedStart.ToString(), "--width", columns.ToString(),
-                "--height", rows.ToString(), "--colors", colors.ToString(), "--output-relative", Quote(outputRelative) };
-            string directory = Path.Combine(ProjectRoot, outputRelative);
+                "--height", rows.ToString(), "--colors", colors.ToString(), "--output-relative", Quote(outputRelative), "--session-start" };
             try
             {
+                string directory = Path.Combine(ProjectRoot, outputRelative);
                 if (Directory.Exists(directory)) throw new IOException("Unique local run folder already exists; left unchanged.");
-                Directory.CreateDirectory(directory);
                 localRun = true;
                 lock (outputLock) { stdout.Clear(); stderr.Clear(); }
                 cancelRequested = false;
@@ -462,7 +463,7 @@ namespace Match3Factory
                 process.ErrorDataReceived += (_, evt) => AppendBounded(stderr, evt.Data);
                 process.Start(); process.BeginOutputReadLine(); process.BeginErrorReadLine();
                 outputField.value = outputRelative;
-                processStatus = "Generating independent Factory-local preview boards · donor input unused · Engine blocked…";
+                processStatus = "Starting checkpointed Factory-local preview run · cancellable and resumable · Engine blocked…";
                 SubscribeToUpdates(); RefreshStatus();
             }
             catch (Exception ex) { processStatus = "NOT_RUN · local authoring process could not start: " + ex.Message; RefreshStatus(); }
@@ -494,6 +495,13 @@ namespace Match3Factory
             try
             {
                 var run = JsonUtility.FromJson<RunConfigurationEnvelope>(File.ReadAllText(configPath));
+                if (File.Exists(Path.Combine(full, "checkpoint.json")) &&
+                    run != null && run.sourceRevision == "LFX-M11-R04-local-authoring-v2")
+                {
+                    localRun = true;
+                    LaunchLocalSession(resume: true);
+                    return;
+                }
                 if (run == null || run.workbenchVersion != 2)
                 {
                     EditorUtility.DisplayDialog("R01 run is read-only", "Older campaign workbench runs can be loaded from their summary for review, but R02 does not resume, migrate, or rewrite their checkpoints. Start a new R02 run.", "OK");
@@ -594,6 +602,55 @@ namespace Match3Factory
             }
         }
 
+        private void LaunchLocalSession(bool resume)
+        {
+            if (process != null && !process.HasExited)
+            {
+                EditorUtility.DisplayDialog("Batch already running", "Wait for the active batch or cancel it before starting another.", "OK");
+                return;
+            }
+            string script = Path.Combine(ProjectRoot, "Tools", "UltraGem", "factory_local_authoring.py");
+            if (!File.Exists(script))
+            {
+                EditorUtility.DisplayDialog("Local authoring unavailable", "Missing Tools/UltraGem/factory_local_authoring.py.", "OK");
+                return;
+            }
+            var args = new List<string> { Quote(script), "--project-root", Quote(ProjectRoot),
+                "--output-relative", Quote(outputRelative), resume ? "--session-resume" : "--session-start" };
+            if (!resume)
+            {
+                var profileIds = allProfiles ? Profiles : new[] { selectedProfile };
+                args.Add("--profiles"); args.Add(Quote(string.Join(",", profileIds)));
+                args.Add("--attempts-per-profile"); args.Add(Math.Max(1, Math.Min(10, attemptsPerProfile)).ToString());
+                args.Add("--seed-start"); args.Add(seedStart.ToString());
+                args.Add("--width"); args.Add(columns.ToString()); args.Add("--height"); args.Add(rows.ToString());
+                args.Add("--colors"); args.Add(colors.ToString());
+            }
+            try
+            {
+                string runDirectory = Path.Combine(ProjectRoot, outputRelative);
+                if (resume ? !Directory.Exists(runDirectory) : Directory.Exists(runDirectory))
+                    throw new IOException(resume ? "Selected local run folder is missing." : "Unique local run folder already exists; left unchanged.");
+                localRun = true;
+                lock (outputLock) { stdout.Clear(); stderr.Clear(); }
+                cancelRequested = false;
+                cancelMarkerWritten = false;
+                var info = new ProcessStartInfo { FileName = pythonExecutable, Arguments = string.Join(" ", args),
+                    WorkingDirectory = ProjectRoot, UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true };
+                process = new Process { StartInfo = info, EnableRaisingEvents = true };
+                process.OutputDataReceived += (_, evt) => AppendBounded(stdout, evt.Data);
+                process.ErrorDataReceived += (_, evt) => AppendBounded(stderr, evt.Data);
+                process.Start(); process.BeginOutputReadLine(); process.BeginErrorReadLine();
+                outputField.value = outputRelative;
+                localOutputRelative = outputRelative;
+                processStatus = resume ? "Resuming Factory-local run after checkpoint validation…" :
+                    "Running checkpointed Factory-local sample previews · donor input unused · ENG-M24 blocked…";
+                SubscribeToUpdates(); RefreshStatus();
+            }
+            catch (Exception ex) { processStatus = "NOT_RUN · local session could not start: " + ex.Message; RefreshStatus(); }
+        }
+
         private static string Quote(string value)
         {
             return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
@@ -662,7 +719,7 @@ namespace Match3Factory
         private void WriteCancelMarkerIfAvailable()
         {
             if (cancelMarkerWritten || string.IsNullOrEmpty(outputRelative)) return;
-            string marker = Path.Combine(ProjectRoot, outputRelative, "CANCEL.request");
+            string marker = Path.Combine(ProjectRoot, outputRelative, localRun ? "cancel.request" : "CANCEL.request");
             if (!Directory.Exists(Path.GetDirectoryName(marker))) return;
             try { using (new FileStream(marker, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) { } }
             catch (IOException) { }
@@ -825,7 +882,7 @@ namespace Match3Factory
                     throw new InvalidOperationException("Local draft file SHA-256 does not match its summary.");
                 var draft = JsonUtility.FromJson<LevelDraft>(Encoding.UTF8.GetString(bytes));
                 if (draft == null || draft.sourceKind != "FactoryOriginalLocalSampleBoard" ||
-                    draft.sourceRevision != "LFX-M11-R03-local-authoring-v1" ||
+                    draft.sourceRevision != "LFX-M11-R04-local-authoring-v2" ||
                     !string.Equals(LevelDraftJson.Sha256(draft), record.draftSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Local draft provenance or canonical SHA-256 is invalid.");
                 var errors = draft.Validate();

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-import tempfile
+import uuid
 import unittest
 from pathlib import Path
 
@@ -68,20 +68,20 @@ class FactoryLocalAuthoringTests(unittest.TestCase):
 
     def test_write_batch_hash_manifest_and_no_overwrite(self):
         result = authoring.build_batch([PROFILE_IDS[0]], attempts_per_profile=2, seed_start=88)
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "local-run"
-            summary = authoring.write_batch(out, result)
-            manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(len(manifest["entries"]), 2)
-            for entry in manifest["entries"]:
-                raw = (out / entry["path"]).read_bytes()
-                self.assertLess(len(raw), 2_000_000)
-                self.assertEqual(hashlib.sha256(raw).hexdigest(), entry["sha256"])
-                parsed = leveldraft.loads_strict(raw.decode("utf-8"))
-                self.assertEqual(leveldraft.sha256(parsed), entry["draftSha256"])
-            self.assertEqual(summary["engineQualifiedCampaignLevels"], 0)
-            with self.assertRaises(FileExistsError):
-                authoring.write_batch(out, result)
+        project = Path(__file__).resolve().parents[3]
+        out = project / "Artifacts" / ".local-authoring-tests" / uuid.uuid4().hex / "local-run"
+        summary = authoring.write_batch(out, result)
+        manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(manifest["entries"]), 2)
+        for entry in manifest["entries"]:
+            raw = (out / entry["path"]).read_bytes()
+            self.assertLess(len(raw), 2_000_000)
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), entry["sha256"])
+            parsed = leveldraft.loads_strict(raw.decode("utf-8"))
+            self.assertEqual(leveldraft.sha256(parsed), entry["draftSha256"])
+        self.assertEqual(summary["engineQualifiedCampaignLevels"], 0)
+        with self.assertRaises(FileExistsError):
+            authoring.write_batch(out, result)
 
     def test_goals_and_engine_independence(self):
         draft = authoring.create_draft(PROFILE_IDS[4], 31)
