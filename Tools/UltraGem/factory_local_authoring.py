@@ -56,7 +56,9 @@ def _atomic_create(path: Path, data: bytes) -> None:
 
 def _atomic_replace(path: Path, data: bytes) -> None:
     partial = path.with_name(path.name + ".partial")
-    with partial.open("wb") as stream:
+    # A previous interrupted/failed replacement is forensic evidence. Never
+    # truncate it on a later retry; callers must inspect the partial explicitly.
+    with partial.open("xb") as stream:
         stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
@@ -309,6 +311,43 @@ def _save_checkpoint(run_dir: Path, checkpoint: dict[str, Any]) -> dict[str, Any
     return sealed
 
 
+def _expected_manifest(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    return {"sourceKind": SOURCE_KIND, "sourceRevision": SOURCE_REVISION,
+            "configurationSha256": checkpoint["configurationSha256"],
+            "entries": [{"path": r["path"], "profileId": r["profileId"], "seed": r["seed"],
+                         "draftSha256": r["draftSha256"], "rawSha256": r["rawSha256"]}
+                        for r in checkpoint["records"]]}
+
+
+def _recover_checkpoint_manifest_gap(run_dir: Path, checkpoint: dict[str, Any],
+                                     actual_manifest: Any) -> bool:
+    """Repair exactly one checkpoint-ahead manifest after a process crash.
+
+    The saved candidate was already recomputed and byte/hash-validated by
+    _load_saved_drafts. Recovery is allowed only when the persisted manifest
+    exactly equals the checkpoint's records with its last record removed and
+    the final hash-chained event is a normal commit or orphan recovery.
+    """
+    records = checkpoint.get("records")
+    events = checkpoint.get("events")
+    if not isinstance(records, list) or not isinstance(events, list) or len(records) == 0 or len(events) != len(records):
+        return False
+    last_event = events[-1]
+    if not isinstance(last_event, dict) or last_event.get("event") not in {"CANDIDATE_COMMITTED", "CANDIDATE_RECOVERED"}:
+        return False
+    previous = dict(checkpoint)
+    previous["records"] = records[:-1]
+    previous["events"] = events[:-1]
+    expected_previous_head = events[-2]["eventSha256"] if len(events) > 1 else "0" * 64
+    if checkpoint.get("eventHead") != last_event.get("eventSha256") or last_event.get("previousEventSha256") != expected_previous_head:
+        return False
+    previous["eventHead"] = expected_previous_head
+    if actual_manifest != _expected_manifest(previous):
+        return False
+    _atomic_replace(run_dir / "manifest.json", _json_bytes(_expected_manifest(checkpoint), pretty=True))
+    return True
+
+
 def run_session(project_root: Path, run_relative: str, *, resume: bool = False,
                 progress_callback=None, max_new_candidates: int | None = None,
                 crash_after_artifact: bool = False) -> dict[str, Any]:
@@ -329,16 +368,12 @@ def run_session(project_root: Path, run_relative: str, *, resume: bool = False,
         raise ValueError("checkpoint exceeds configured batch size")
     manifest_path = run_dir / "manifest.json"
     if manifest_path.exists():
-        expected_manifest = {"sourceKind": SOURCE_KIND, "sourceRevision": SOURCE_REVISION,
-                             "configurationSha256": checkpoint["configurationSha256"],
-                             "entries": [{"path": r["path"], "profileId": r["profileId"], "seed": r["seed"],
-                                          "draftSha256": r["draftSha256"], "rawSha256": r["rawSha256"]}
-                                         for r in checkpoint["records"]]}
+        expected_manifest = _expected_manifest(checkpoint)
         try:
             actual_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError("manifest JSON is invalid") from exc
-        if actual_manifest != expected_manifest:
+        if actual_manifest != expected_manifest and not _recover_checkpoint_manifest_gap(run_dir, checkpoint, actual_manifest):
             raise ValueError("manifest does not match checkpoint records")
     elif checkpoint["status"] != "READY" or checkpoint["records"]:
         raise ValueError("run manifest is missing")
