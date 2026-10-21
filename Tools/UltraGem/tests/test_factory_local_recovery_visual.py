@@ -51,6 +51,11 @@ class FactoryLocalRecoveryVisualTests(unittest.TestCase):
         resumed = authoring.run_session(self.root, "Artifacts/run", resume=True)
         self.assertEqual(resumed["status"], "COMPLETED")
         self.assertEqual((run_dir / first["path"]).read_bytes(), first_bytes)
+        self.start("Artifacts/uninterrupted", attempts=3)
+        authoring.run_session(self.root, "Artifacts/uninterrupted")
+        resumed_manifest = json.loads((run_dir / "manifest.json").read_text())
+        uninterrupted_manifest = json.loads((self.root / "Artifacts/uninterrupted/manifest.json").read_text())
+        self.assertEqual(resumed_manifest, uninterrupted_manifest)
 
     def test_equal_config_runs_have_identical_candidate_and_manifest_bytes(self):
         self.start("Artifacts/a", attempts=2)

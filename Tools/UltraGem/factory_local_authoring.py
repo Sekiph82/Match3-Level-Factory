@@ -60,7 +60,17 @@ def _atomic_replace(path: Path, data: bytes) -> None:
         stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(partial, path)
+    for attempt in range(5):
+        try:
+            os.replace(partial, path)
+            return
+        except PermissionError as exc:
+            # Windows scanners/indexers can briefly hold a just-written file.
+            # Retry only the documented transient access/sharing errors; never
+            # fall back to a non-atomic write or delete an uncertain artifact.
+            if os.name != "nt" or getattr(exc, "winerror", None) not in (5, 32) or attempt == 4:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def _seal(checkpoint: dict[str, Any]) -> dict[str, Any]:
