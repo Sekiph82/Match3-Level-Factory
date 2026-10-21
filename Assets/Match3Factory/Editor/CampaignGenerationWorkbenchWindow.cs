@@ -862,7 +862,9 @@ namespace Match3Factory
                 string raw = File.ReadAllText(full);
                 if (!raw.Contains("\"sourceKind\": \"FactoryOriginalLocalSampleBoard\""))
                     throw new InvalidOperationException("Selected summary is not a Factory-original local authoring run.");
-                localOutputRelative = Path.GetDirectoryName(full).Substring(Path.GetFullPath(ProjectRoot).TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace('\\', '/');
+                string selectedRun = Path.GetDirectoryName(full);
+                CampaignArtifactIntegrity.VerifyLocalRun(selectedRun);
+                localOutputRelative = selectedRun.Substring(Path.GetFullPath(ProjectRoot).TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace('\\', '/');
                 loadedLocalSummary = JsonUtility.FromJson<LocalAuthoringSummary>(raw);
                 if (summaryLabel != null)
                     summaryLabel.text = $"DONOR + FACTORY LOCAL REVIEW · donor outputs {loadedSummary?.donorOriginalOutputCount ?? 0} · independent local drafts {loadedLocalSummary.localDraftCount} · Engine qualified 0 · BLOCKED_ENG_M24";
@@ -881,6 +883,7 @@ namespace Match3Factory
                 string localRoot = Path.GetFullPath(Path.Combine(ProjectRoot, localOutputRelative)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
                 string path = Path.GetFullPath(Path.Combine(localRoot, record.recordPath));
                 if (!path.StartsWith(localRoot, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Local review artifact resolves outside its run.");
+                CampaignArtifactIntegrity.VerifyLocalRun(localRoot.TrimEnd(Path.DirectorySeparatorChar));
                 byte[] bytes = File.ReadAllBytes(path);
                 if (!string.Equals(Sha256(bytes), record.recordSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Local draft file SHA-256 does not match its summary.");
