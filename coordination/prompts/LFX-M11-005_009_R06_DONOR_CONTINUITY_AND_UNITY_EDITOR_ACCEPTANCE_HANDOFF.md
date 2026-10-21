@@ -39,7 +39,7 @@ Owner explicitly forbids ADB, Android Emulator, Android builds and extra/paid wo
 3. If no owner-opened Editor exists or an operation might launch ADB, **STOP THIS WORKSTREAM ONLY** and mark `UNITY_EDITOR_NOT_RUN_OWNER_ACTION_REQUIRED`. Give the owner an exact concise checklist to manually open the **existing Level Factory project** in desktop-only mode, not another project; do NOT auto-start batchmode/editor, ADB/Android SDK or Unity Hub without separate permission. Continue/finish the bounded donor and evidence workstreams. Do not create another preflight-only milestone to avoid this blockage.
 4. If safe Editor testing reveals a real C# bug, fix **only the confirmed problem** in this repo, add focused regression, and retest if safe. Do not touch Engine or invent gameplay solver.
 
-The frozen R06 full independent verdict must still be **NOT MET** if Unity or genuine OS symlink criteria remain unrun. Never relax the audit after seeing the logs.
+The frozen R06 full independent verdict must still be **NOT MET** if mandatory Unity gates remain NOT_RUN. A genuine Windows OS symlink test that cannot run must be disclosed as a **separate unverified subcase**; the D07 criterion assesses truthful isolation and executed mock guards and must not be misleadingly described as an OS PASS. Never relax or reinterpret the frozen criteria after seeing the logs.
 
 ## Scope, test evidence and final delivery
 
