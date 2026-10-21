@@ -239,6 +239,10 @@ class CampaignGenerationWorkbenchTests(unittest.TestCase):
             self.assertEqual(summary["donorOriginalOutputCount"], 0)
             self.assertEqual(summary["derivedLocalAuthoringProposalCount"], 0)
             self.assertEqual(summary["records"][0]["triageStatus"], "FAILED")
+            failure_path = out / summary["records"][0]["recordPath"]
+            failure = json.loads(failure_path.read_text(encoding="utf-8"))
+            self.assertIn("Traceback (most recent call last)", failure["diagnosticTraceback"])
+            self.assertIn("run_campaign_batch", failure["diagnosticTraceback"])
 
     def test_empty_and_underfilled_batches_are_reported_without_fabricated_outputs(self):
         calls = 0

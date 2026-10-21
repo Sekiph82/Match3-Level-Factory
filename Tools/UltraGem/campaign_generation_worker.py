@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import traceback
 
 from factory_pipeline import run_pipeline
 
@@ -22,7 +23,9 @@ def main() -> int:
                                     default=lambda value: value.item() if hasattr(value, "item") else value) + "\n")
         return 0
     except Exception as exc:
-        sys.stderr.write(f"{type(exc).__name__}: {exc}\n")
+        # Retain the authentic source stack for bounded, local QA diagnostics.
+        # The parent workbench redacts checkout paths before persisting it.
+        sys.stderr.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-8192:])
         return 2
 
 

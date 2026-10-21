@@ -179,8 +179,13 @@ def diagnose_local_sample_proposal(draft: dict[str, Any], project_root: Path | s
     except ValueError as exc:
         studio_gems = set()
         findings.append({"code": "STUDIO_PALETTE_UNVERIFIED", "reason": str(exc)})
-    unsupported_content = sorted({cell.get("contentId") for cell in draft["cells"]
-                                  if cell.get("active") and cell.get("contentId") not in studio_gems})
+    # A valid active sample obstacle may have no gem content. Keep that None
+    # finding visible, but never compare it directly with string identifiers.
+    unsupported_content = sorted(
+        {cell.get("contentId") for cell in draft["cells"]
+         if cell.get("active") and cell.get("contentId") not in studio_gems},
+        key=lambda value: (value is not None, "" if value is None else str(value)),
+    )
     if unsupported_content:
         findings.append({"code": "SAMPLE_GEM_BINDING_REQUIRED",
                          "reason": "Donor identifiers are not Level Draft Studio sample GemIds; no remapping was performed.",

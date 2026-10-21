@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 from collections import Counter
 from pathlib import Path
@@ -33,6 +34,7 @@ MAX_RUN_WORK_UNITS = 4096
 MAX_BATCH_WORK_UNITS = 512_000
 MAX_ARTIFACT_BYTES = 100_000_000
 MAX_CANDIDATE_JSON_BYTES = 2_000_000
+MAX_TRACEBACK_CHARS = 8192
 DEFAULT_NEAR_DUPLICATE_THRESHOLD = 0.95
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SAFE_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
@@ -289,8 +291,11 @@ def _run_pipeline_with_timeout(*, timeout_seconds: int, **kwargs: Any) -> dict[s
     except subprocess.TimeoutExpired as exc:
         raise TimeoutError(f"donor candidate exceeded {timeout_seconds}s timeout") from exc
     if completed.returncode != 0:
-        message = completed.stderr.decode("utf-8", errors="replace")[:1000]
-        raise WorkbenchError(f"donor worker failed ({completed.returncode}): {message}")
+        message = completed.stderr.decode("utf-8", errors="replace")[:MAX_TRACEBACK_CHARS]
+        message = message.replace(str(PROJECT_ROOT), "<PROJECT_ROOT>").replace(str(PROJECT_ROOT).replace("\\", "/"), "<PROJECT_ROOT>")
+        error = WorkbenchError(f"donor worker failed ({completed.returncode}): {message[-1000:]}")
+        error.diagnostic_traceback = message
+        raise error
     if len(completed.stdout) > MAX_CANDIDATE_JSON_BYTES:
         raise WorkbenchError("donor worker result exceeds 2 MB")
     try:
@@ -699,11 +704,16 @@ def run_campaign_batch(*, config: dict[str, Any], output_dir: Path | str,
                         prior_local_proposals[profile].append((proposal_id, proposal_draft))
                 except Exception as exc:
                     elapsed = time.monotonic() - started
+                    diagnostic_traceback = getattr(exc, "diagnostic_traceback", "")
+                    if not diagnostic_traceback:
+                        diagnostic_traceback = traceback.format_exc(limit=32)[-MAX_TRACEBACK_CHARS:]
+                        diagnostic_traceback = diagnostic_traceback.replace(str(PROJECT_ROOT), "<PROJECT_ROOT>").replace(str(PROJECT_ROOT).replace("\\", "/"), "<PROJECT_ROOT>")
                     failure = {
                         "recordVersion": 1, "profileId": profile, "attempt": attempt,
                         "donorSeed": seed, "sourceGenerated": False,
                         "attemptStatus": "FAILED", "reasonCode": type(exc).__name__,
                         "error": str(exc)[:1000],
+                        "diagnosticTraceback": diagnostic_traceback,
                         "engineStatus": "BLOCKED_ENG_M24",
                     }
                     relative = f"failures/{profile}/attempt-{attempt:03d}-seed-{seed}.json"

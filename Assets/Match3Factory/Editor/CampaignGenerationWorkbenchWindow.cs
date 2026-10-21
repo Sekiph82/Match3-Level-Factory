@@ -201,6 +201,32 @@ namespace Match3Factory
             public int workbenchVersion;
         }
 
+        [Serializable]
+        private sealed class LocalAuthoringSummary
+        {
+            public string resultStatus;
+            public string sourceKind;
+            public int generationAttempts;
+            public int localDraftCount;
+            public int locallyCompatibleUniqueCount;
+            public int engineQualifiedCampaignLevels;
+            public string engineStatus;
+            public LocalAuthoringRecord[] records;
+        }
+
+        [Serializable]
+        private sealed class LocalAuthoringRecord
+        {
+            public string candidateId;
+            public string profileId;
+            public int attempt;
+            public int seed;
+            public string draftSha256;
+            public string status;
+            public string recordPath;
+            public string recordSha256;
+        }
+
         private readonly object outputLock = new object();
         private readonly StringBuilder stdout = new StringBuilder();
         private readonly StringBuilder stderr = new StringBuilder();
@@ -217,7 +243,9 @@ namespace Match3Factory
         private int timeoutSeconds = 30;
         private float nearDuplicateThreshold = .95f;
         private string outputRelative;
+        private string localOutputRelative;
         private SummaryEnvelope loadedSummary;
+        private LocalAuthoringSummary loadedLocalSummary;
         private CandidateEnvelope selectedCandidate;
         private LocalGoalProposalEnvelope selectedProposal;
         private LevelDraft selectedDraft;
@@ -227,11 +255,13 @@ namespace Match3Factory
         private string statusFilter = "All statuses";
         private Process process;
         private bool cancelRequested;
+        private bool localRun;
         private bool cancelMarkerWritten;
         private string processStatus = "Idle · reference-only · ENG-M24 blocked";
         private Label statusLabel;
         private Label summaryLabel;
         private ScrollView candidateQueue;
+        private ScrollView localCandidateQueue;
         private VisualElement boardPreview;
         private TextField outputField;
         private bool windowEnabled;
@@ -309,9 +339,11 @@ namespace Match3Factory
             rootVisualElement.Add(outputField);
             var actions = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap } };
             actions.Add(MakeButton("Generate new batch", StartNewBatch));
+            actions.Add(MakeButton("Generate original local preview batch (5/profile)", StartLocalAuthoringBatch));
             actions.Add(MakeButton("Resume batch…", ChooseAndResume));
             actions.Add(MakeButton("Cancel after current candidate", RequestCancel));
             actions.Add(MakeButton("Load run summary", LoadSummary));
+            actions.Add(MakeButton("Load local preview set…", LoadLocalSummary));
             actions.Add(MakeButton("Show output folder", ShowOutputFolder));
             rootVisualElement.Add(actions);
 
@@ -334,9 +366,20 @@ namespace Match3Factory
             statusDropdown.RegisterValueChangedCallback(evt => { statusFilter = evt.newValue; RefreshLoadedQueue(); });
             filters.Add(statusDropdown);
             rootVisualElement.Add(filters);
+            var reviewColumns = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            var donorColumn = new VisualElement { style = { flexGrow = 1, minWidth = 300 } };
+            donorColumn.Add(new Label("DONOR SOURCE + DERIVED GOAL PROPOSALS"));
             candidateQueue = new ScrollView { name = "campaign-candidate-queue" };
-            candidateQueue.style.maxHeight = 220;
-            rootVisualElement.Add(candidateQueue);
+            candidateQueue.style.maxHeight = 260;
+            donorColumn.Add(candidateQueue);
+            var localColumn = new VisualElement { style = { flexGrow = 1, minWidth = 300 } };
+            localColumn.Add(new Label("FACTORY-ORIGINAL LOCAL BOARDS"));
+            localCandidateQueue = new ScrollView { name = "campaign-local-candidate-queue" };
+            localCandidateQueue.style.maxHeight = 260;
+            localColumn.Add(localCandidateQueue);
+            reviewColumns.Add(donorColumn);
+            reviewColumns.Add(localColumn);
+            rootVisualElement.Add(reviewColumns);
             rootVisualElement.Add(new Label("Selected board and goal provenance"));
             boardPreview = new VisualElement { name = "campaign-board-preview" };
             rootVisualElement.Add(boardPreview);
@@ -380,6 +423,49 @@ namespace Match3Factory
             string runName = "CampaignQA-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
             outputRelative = Path.Combine("Artifacts", runName).Replace('\\', '/');
             Launch(resume: false);
+        }
+
+        private void StartLocalAuthoringBatch()
+        {
+            if (process != null && !process.HasExited)
+            {
+                EditorUtility.DisplayDialog("Batch already running", "Wait for or cancel the active batch first.", "OK");
+                return;
+            }
+            string script = Path.Combine(ProjectRoot, "Tools", "UltraGem", "factory_local_authoring.py");
+            if (!File.Exists(script))
+            {
+                EditorUtility.DisplayDialog("Local authoring unavailable", "Missing Tools/UltraGem/factory_local_authoring.py.", "OK");
+                return;
+            }
+            string runName = "FactoryLocalQA-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            outputRelative = Path.Combine("Artifacts", runName).Replace('\\', '/');
+            var profileIds = allProfiles ? Profiles : new[] { selectedProfile };
+            var args = new List<string> { Quote(script), "--project-root", Quote(ProjectRoot),
+                "--profiles", Quote(string.Join(",", profileIds)), "--attempts-per-profile", "5",
+                "--seed-start", seedStart.ToString(), "--width", columns.ToString(),
+                "--height", rows.ToString(), "--colors", colors.ToString(), "--output-relative", Quote(outputRelative) };
+            string directory = Path.Combine(ProjectRoot, outputRelative);
+            try
+            {
+                if (Directory.Exists(directory)) throw new IOException("Unique local run folder already exists; left unchanged.");
+                Directory.CreateDirectory(directory);
+                localRun = true;
+                lock (outputLock) { stdout.Clear(); stderr.Clear(); }
+                cancelRequested = false;
+                cancelMarkerWritten = false;
+                var info = new ProcessStartInfo { FileName = pythonExecutable, Arguments = string.Join(" ", args),
+                    WorkingDirectory = ProjectRoot, UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true };
+                process = new Process { StartInfo = info };
+                process.OutputDataReceived += (_, evt) => AppendBounded(stdout, evt.Data);
+                process.ErrorDataReceived += (_, evt) => AppendBounded(stderr, evt.Data);
+                process.Start(); process.BeginOutputReadLine(); process.BeginErrorReadLine();
+                outputField.value = outputRelative;
+                processStatus = "Generating independent Factory-local preview boards · donor input unused · Engine blocked…";
+                SubscribeToUpdates(); RefreshStatus();
+            }
+            catch (Exception ex) { processStatus = "NOT_RUN · local authoring process could not start: " + ex.Message; RefreshStatus(); }
         }
 
         private void ChooseAndResume()
@@ -444,6 +530,7 @@ namespace Match3Factory
 
         private void Launch(bool resume)
         {
+            localRun = false;
             var script = Path.Combine(ProjectRoot, "Tools", "UltraGem", "campaign_generation_workbench.py");
             if (!File.Exists(script))
             {
@@ -636,7 +723,17 @@ namespace Match3Factory
             }
             try
             {
-                var summary = JsonUtility.FromJson<SummaryEnvelope>(File.ReadAllText(path));
+                string raw = File.ReadAllText(path);
+                if (raw.Contains("\"sourceKind\": \"FactoryOriginalLocalSampleBoard\""))
+                {
+                    loadedLocalSummary = JsonUtility.FromJson<LocalAuthoringSummary>(raw);
+                    localOutputRelative = outputRelative;
+                    if (summaryLabel != null)
+                        summaryLabel.text = $"FACTORY ORIGINAL LOCAL · {loadedLocalSummary.generationAttempts} attempts · {loadedLocalSummary.localDraftCount} drafts · locally compatible unique {loadedLocalSummary.locallyCompatibleUniqueCount} · owner approved 0 · Engine qualified {loadedLocalSummary.engineQualifiedCampaignLevels} · {loadedLocalSummary.engineStatus}";
+                    RefreshLoadedQueue();
+                    return;
+                }
+                var summary = JsonUtility.FromJson<SummaryEnvelope>(raw);
                 loadedSummary = summary;
                 if (summaryLabel != null)
                     summaryLabel.text = $"{summary.resultStatus} v{summary.workbenchVersion} · donor attempts {summary.generationAttempts} · original donor outputs {summary.donorOriginalOutputCount} · unresolved donor goals {summary.unresolvedGoalRejectionCount} · derived local proposals {summary.derivedLocalAuthoringProposalCount} · locally authorable unique {summary.locallyAuthorableUniqueDraftCount} · owner approved {summary.ownerApprovedCandidates} · Engine qualified {summary.engineQualifiedCampaignLevels} · {summary.engineStatus}";
@@ -650,9 +747,10 @@ namespace Match3Factory
 
         private void RefreshLoadedQueue()
         {
-            if (candidateQueue == null || loadedSummary == null) return;
+            if (candidateQueue == null || localCandidateQueue == null) return;
             candidateQueue.Clear();
-            if (showSourceCandidates)
+            localCandidateQueue.Clear();
+            if (loadedSummary != null && showSourceCandidates)
             {
                 foreach (var record in loadedSummary.records ?? Array.Empty<CandidateSummary>())
                 {
@@ -663,7 +761,7 @@ namespace Match3Factory
                     candidateQueue.Add(button);
                 }
             }
-            if (showLocalProposals)
+            if (loadedSummary != null && showLocalProposals)
             {
                 foreach (var proposal in loadedSummary.localGoalProposals ?? Array.Empty<ProposalSummary>())
                 {
@@ -673,8 +771,77 @@ namespace Match3Factory
                     candidateQueue.Add(button);
                 }
             }
-            if (candidateQueue.childCount == 0)
-                candidateQueue.Add(new Label("No source or derived records match the selected filters."));
+            if (loadedLocalSummary != null)
+            {
+                foreach (var record in loadedLocalSummary.records ?? Array.Empty<LocalAuthoringRecord>())
+                {
+                    var button = MakeButton($"FACTORY LOCAL · {record.profileId} · #{record.attempt} · {record.status} · seed {record.seed}", () => SelectLocalBoard(record));
+                    button.tooltip = "Factory-authored sample board · no donor input · " + record.draftSha256;
+                    localCandidateQueue.Add(button);
+                }
+            }
+            if (candidateQueue.childCount == 0) candidateQueue.Add(new Label("No donor/proposal records loaded or matching filters."));
+            if (localCandidateQueue.childCount == 0) localCandidateQueue.Add(new Label("No independent Factory-local set loaded."));
+        }
+
+        private void LoadLocalSummary()
+        {
+            string selected = EditorUtility.OpenFilePanel("Load a Factory-local preview summary", Path.Combine(ProjectRoot, "Artifacts"), "json");
+            if (string.IsNullOrEmpty(selected)) return;
+            string full = Path.GetFullPath(selected);
+            string artifactRoot = Path.GetFullPath(Path.Combine(ProjectRoot, "Artifacts")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!full.StartsWith(artifactRoot, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(Path.GetFileName(full), "summary.json", StringComparison.OrdinalIgnoreCase))
+            {
+                EditorUtility.DisplayDialog("Invalid local run summary", "Choose summary.json inside this project's Artifacts folder.", "OK");
+                return;
+            }
+            try
+            {
+                string raw = File.ReadAllText(full);
+                if (!raw.Contains("\"sourceKind\": \"FactoryOriginalLocalSampleBoard\""))
+                    throw new InvalidOperationException("Selected summary is not a Factory-original local authoring run.");
+                localOutputRelative = Path.GetDirectoryName(full).Substring(Path.GetFullPath(ProjectRoot).TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace('\\', '/');
+                loadedLocalSummary = JsonUtility.FromJson<LocalAuthoringSummary>(raw);
+                if (summaryLabel != null)
+                    summaryLabel.text = $"DONOR + FACTORY LOCAL REVIEW · donor outputs {loadedSummary?.donorOriginalOutputCount ?? 0} · independent local drafts {loadedLocalSummary.localDraftCount} · Engine qualified 0 · BLOCKED_ENG_M24";
+                RefreshLoadedQueue();
+            }
+            catch (Exception ex) { EditorUtility.DisplayDialog("Local summary unavailable", ex.Message, "OK"); }
+        }
+
+        private void SelectLocalBoard(LocalAuthoringRecord record)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(localOutputRelative) || string.IsNullOrWhiteSpace(record.recordPath) ||
+                    Path.IsPathRooted(record.recordPath) || record.recordPath.Split('/', '\\').Any(part => part == ".."))
+                    throw new InvalidOperationException("Local review artifact path is unsafe.");
+                string localRoot = Path.GetFullPath(Path.Combine(ProjectRoot, localOutputRelative)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                string path = Path.GetFullPath(Path.Combine(localRoot, record.recordPath));
+                if (!path.StartsWith(localRoot, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Local review artifact resolves outside its run.");
+                byte[] bytes = File.ReadAllBytes(path);
+                if (!string.Equals(Sha256(bytes), record.recordSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Local draft file SHA-256 does not match its summary.");
+                var draft = JsonUtility.FromJson<LevelDraft>(Encoding.UTF8.GetString(bytes));
+                if (draft == null || draft.sourceKind != "FactoryOriginalLocalSampleBoard" ||
+                    draft.sourceRevision != "LFX-M11-R03-local-authoring-v1" ||
+                    !string.Equals(LevelDraftJson.Sha256(draft), record.draftSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Local draft provenance or canonical SHA-256 is invalid.");
+                var errors = draft.Validate();
+                if (errors.Count > 0) throw new InvalidOperationException(string.Join(" ", errors));
+                var capabilityErrors = GameProfileCatalog.ValidateDraft(draft);
+                if (capabilityErrors.Count > 0) throw new NotSupportedException(string.Join(" ", capabilityErrors));
+                selectedDraft = draft; selectedCandidate = null; selectedProposal = null; selectedArtifactPath = path;
+                RenderBoardPreview($"FACTORY ORIGINAL LOCAL · {record.candidateId}\nLOCAL_SAMPLE_COMPATIBLE_PREVIEW_ONLY · sample.score 500 / 20 moves\nSource: {draft.sourceRepository}@{draft.sourceRevision} · {draft.sourceKind}\nSHA-256 {record.draftSha256}\nPROTOTYPE_ONLY · ENGINE_NOT_RUN · ENG-M24 BLOCKED · not a WIN");
+            }
+            catch (Exception ex) { RenderBoardPreview("Local board rejected: " + ex.Message); }
+        }
+
+        private static string Sha256(byte[] bytes)
+        {
+            using (var sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", string.Empty).ToLowerInvariant();
         }
 
         private bool MatchesStatusFilter(string status)

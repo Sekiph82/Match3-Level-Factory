@@ -142,6 +142,19 @@ class CampaignGoalContractTests(unittest.TestCase):
         self.assertTrue(codes.intersection({"SAMPLE_GEM_BINDING_REQUIRED", "SAMPLE_CELL_MECHANIC_UNSUPPORTED"}))
         self.assertEqual(diagnostics["engineStatus"], "BLOCKED_ENG_M24")
 
+    def test_mixed_none_and_string_content_diagnostics_are_deterministic(self):
+        draft = copy.deepcopy(self.draft)
+        cell = next(item for item in draft["cells"] if item["active"])
+        cell.update(contentId=None, obstacleId="sample.glass", obstacleDurability=1,
+                    locked=False, lockDurability=0, specialId=None)
+        draft["goals"] = [{"goalId": "goal.primary", "targetId": "sample.score", "targetCount": 500}]
+        first = diagnose_local_sample_proposal(draft, PROJECT_ROOT)
+        second = diagnose_local_sample_proposal(draft, PROJECT_ROOT)
+        self.assertEqual(first, second)
+        finding = next(item for item in first["findings"] if item["code"] == "SAMPLE_GEM_BINDING_REQUIRED")
+        self.assertIn(None, finding["sourceValues"])
+        self.assertTrue(any(isinstance(item, str) for item in finding["sourceValues"]))
+
     def test_studio_palette_source_change_blocks_local_contract_interpretation(self):
         draft = copy.deepcopy(self.draft)
         for cell in draft["cells"]:
