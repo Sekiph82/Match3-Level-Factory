@@ -148,6 +148,10 @@ namespace Match3Factory
             public string profileId;
             public int donorSeed;
             public ProposalReference localGoalProposal;
+            public string goalContractStatus;
+            public GoalContractDiagnosis goalContractDiagnosis;
+            public string donorSourceRepository;
+            public string donorRevision;
             public LevelDraft draft;
         }
 
