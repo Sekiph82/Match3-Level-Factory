@@ -21,14 +21,22 @@ CHECKS = (
     ("incident_review", "Post-incident review and independent evidence review are recorded."),
 )
 
-_ALLOWED_REFERENCE = re.compile(r"^(?:ticket|drive|audit|build|provider|owner)/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
+_REFERENCE_ID_PATTERNS = {
+    "ticket": re.compile(r"(?:LFX-M10-007-[0-9]{2}|INC-[A-Z0-9]{2,12}-[0-9]{4,12})", re.I),
+    "drive": re.compile(r"[A-Za-z0-9_-]{25,64}"),
+    "audit": re.compile(r"(?:AUD-LFX-M10-007-[0-9]{2}|AUD-[0-9]{4}-[0-9]{2})", re.I),
+    "build": re.compile(r"(?:BUILD|GH)-[0-9]{6,20}", re.I),
+    "provider": re.compile(r"(?:CASE|INC|CHG|ROT|VALID|REVOKE)-[A-Z0-9]{2,16}-[0-9]{3,15}", re.I),
+    "owner": re.compile(r"APPROVAL-INC-[0-9]{3,12}", re.I),
+}
 _SECRET_ASSIGNMENT = re.compile(r"(?i)(?:token|password|secret|bearer|api[_-]?key)\s*[:=]")
 _SECRET_WORD = re.compile(r"(?i)(?:^|[._/-])(?:secret|password|bearer|token)(?:$|[._/-])")
 _TOKEN_SHAPED_VALUE = re.compile(
     r"(?i)(?:gh[pousr]_[a-z0-9_]{20,}|github_pat_[a-z0-9_]{20,}|"
     r"(?:sk|rk)_(?:live|test)_[a-z0-9]{12,}|"
     r"xox[baprs]-[a-z0-9-]{20,}|AIza[a-z0-9_-]{30,}|"
-    r"azdpat_[a-z0-9]{20,})"
+    r"azdpat_[a-z0-9]{20,}|glpat-[a-z0-9_-]{20,}|"
+    r"npm_[a-z0-9]{20,}|hf_[a-z0-9]{20,}|pypi-[a-z0-9_-]{20,})"
 )
 _MAX_REFERENCE_JSON_CHARS = 4_096
 
@@ -97,8 +105,10 @@ def build_operations_checklist(*, profile_id: str, incident_id: str,
 
     normalized: dict[str, str] = {}
     for key, value in evidence_references.items():
-        if (not isinstance(value, str) or len(value) > 128
-                or _ALLOWED_REFERENCE.fullmatch(value) is None
+        namespace, separator, identifier = value.partition("/") if isinstance(value, str) else ("", "", "")
+        identifier_pattern = _REFERENCE_ID_PATTERNS.get(namespace)
+        if (not isinstance(value, str) or len(value) > 128 or not separator
+                or identifier_pattern is None or identifier_pattern.fullmatch(identifier) is None
                 or ".." in value
                 or _SECRET_ASSIGNMENT.search(value)
                 or _SECRET_WORD.search(value)):

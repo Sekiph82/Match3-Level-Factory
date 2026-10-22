@@ -17,7 +17,7 @@ from operations_checklist import (
 
 class OperationsChecklistTests(unittest.TestCase):
     def references(self):
-        return {key: f"ticket/M10-007-{index:02d}" for index, (key, _) in enumerate(CHECKS, 1)}
+        return {key: f"ticket/LFX-M10-007-{index:02d}" for index, (key, _) in enumerate(CHECKS, 1)}
 
     def test_incomplete_checklist_names_missing_steps_and_keeps_all_actions_disabled(self):
         result = build_operations_checklist(profile_id="Coral_Rescue", incident_id="INC-712")
@@ -75,12 +75,15 @@ class OperationsChecklistTests(unittest.TestCase):
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/sk_live_" + "b" * 24}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/github_pat_" + "c" * 32}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/xoxb-" + "d" * 24}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/glpat-" + "e" * 28}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/npm_" + "f" * 32}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "ticket/glpat-" + "g" * 28}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": 42}},
         ]
         for kwargs in cases:
             with self.subTest(kwargs=repr(kwargs)[:100]), self.assertRaises(ValueError):
                 build_operations_checklist(**kwargs)
-        valid["owner_approval"] = "owner/approval-INC-712"
+        valid["owner_approval"] = "owner/APPROVAL-INC-712"
         self.assertFalse(build_operations_checklist(profile_id="Wonder_Pop", incident_id="INC-712",
                             evidence_references=valid)["productionAuthorization"])
 
