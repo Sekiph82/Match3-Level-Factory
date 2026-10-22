@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Object = UnityEngine.Object;
 
 namespace Match3Factory.Tests
 {
@@ -67,16 +69,47 @@ namespace Match3Factory.Tests
         [Explicit("Run as a separate local Windows Player build; Unity's build pipeline cannot reliably run inside the full EditMode suite.")]
         public void WindowsPlayerBuildExcludesReferenceFactoryAndTestAssemblies()
         {
-            const string scenePath = "Assets/Match3Factory/Tests/Fixtures/PlayerFirewallProof.unity";
-            const string outputDirectory = "Logs/PlayerFirewallProof";
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            string configuredOutput = Environment.GetEnvironmentVariable("LFX_M07_005_PLAYER_BUILD_DIRECTORY");
+            Assert.That(configuredOutput, Is.Not.Null.And.Not.Empty,
+                "Set a unique output directory under project-control/codex/jobs/LFX-M07-005/player-build.");
+            string repositoryRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            string allowedRoot = Path.GetFullPath(Path.Combine(repositoryRoot,
+                "project-control", "codex", "jobs", "LFX-M07-005", "player-build"));
+            string outputDirectory = Path.GetFullPath(configuredOutput);
+            string allowedPrefix = allowedRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            Assert.That(outputDirectory.StartsWith(allowedPrefix, StringComparison.OrdinalIgnoreCase), Is.True,
+                "Player build output must stay in the task-owned evidence directory.");
+            Assert.That(Directory.Exists(outputDirectory) || File.Exists(outputDirectory), Is.False,
+                "Refusing to overwrite an existing build output path.");
+
+            string[] scenePaths = (Environment.GetEnvironmentVariable("LFX_M07_005_SMOKE_SCENE_ASSETS") ?? "")
+                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            Assert.That(scenePaths, Has.Length.EqualTo(2), "Use two unique empty scenes so Player build unload never removes the final editor scene.");
+            Assert.That(scenePaths.Distinct(StringComparer.Ordinal).Count(), Is.EqualTo(scenePaths.Length));
+            foreach (string scenePath in scenePaths)
+            {
+                Assert.That(scenePath, Does.StartWith("Assets/LFXM07005BuildSmoke_").And.EndWith(".unity"),
+                    "Use unique, task-owned empty smoke scenes under Assets/.");
+                Assert.That(Path.GetFileName(scenePath), Is.EqualTo(scenePath.Substring("Assets/".Length)),
+                    "Each temporary smoke scene must be a single Assets-root filename.");
+                Assert.That(File.Exists(scenePath) || File.Exists(scenePath + ".meta"), Is.False,
+                    "Refusing to overwrite an existing temporary smoke scene.");
+            }
+            var scenes = new List<UnityEngine.SceneManagement.Scene>();
             try
             {
-                Assert.That(EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                for (int index = 0; index < scenePaths.Length; index++)
+                {
+                    var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,
+                        index == 0 ? NewSceneMode.Single : NewSceneMode.Additive);
+                    scenes.Add(scene);
+                    Assert.That(EditorSceneManager.SaveScene(scene, scenePaths[index]), Is.True);
+                }
                 Directory.CreateDirectory(outputDirectory);
                 var options = new BuildPlayerOptions
                 {
-                    scenes = new[] { scenePath },
+                    scenes = scenePaths,
                     locationPathName = Path.Combine(outputDirectory, "FactoryFirewallProof.exe"),
                     target = BuildTarget.StandaloneWindows64,
                     options = BuildOptions.StrictMode
@@ -90,7 +123,13 @@ namespace Match3Factory.Tests
                 foreach (string forbidden in new[] { "Match3.Reference", "Match3Factory.Editor", "Match3Factory.SDKBridge", "Match3Factory.Editor.Tests", "Match3Factory.PlayMode.Tests" })
                     Assert.That(outputAssemblies, Does.Not.Contain(forbidden), "Player output must exclude " + forbidden + ".");
             }
-            finally { EditorSceneManager.CloseScene(scene, true); }
+            finally
+            {
+                if (scenes.Count > 0)
+                    EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                foreach (string scenePath in scenePaths) AssetDatabase.DeleteAsset(scenePath);
+                AssetDatabase.Refresh();
+            }
         }
 
         [Test]
