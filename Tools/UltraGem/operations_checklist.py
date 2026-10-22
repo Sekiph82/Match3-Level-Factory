@@ -1,6 +1,7 @@
 """Offline M10 operations checklist; never performs provider or production actions."""
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -23,6 +24,49 @@ CHECKS = (
 _ALLOWED_REFERENCE = re.compile(r"^(?:ticket|drive|audit|build|provider|owner)/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 _SECRET_ASSIGNMENT = re.compile(r"(?i)(?:token|password|secret|bearer|api[_-]?key)\s*[:=]")
 _SECRET_WORD = re.compile(r"(?i)(?:^|[._/-])(?:secret|password|bearer|token)(?:$|[._/-])")
+_MAX_REFERENCE_JSON_CHARS = 4_096
+
+
+def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build a JSON object while rejecting keys a normal dict would erase."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_json(value: str) -> None:
+    raise ValueError(f"non-finite JSON value is not allowed: {value}")
+
+
+def build_operations_checklist_from_json(*, profile_id: str, incident_id: str,
+                                         evidence_references_json: str) -> dict[str, Any]:
+    """Parse untrusted reference JSON without losing duplicate-key evidence.
+
+    The regular Python-dict API cannot detect duplicate keys already collapsed
+    by a caller's JSON parser. This bounded entry point checks duplicates before
+    passing the exact object through the same offline validation path.
+    """
+    if (not isinstance(evidence_references_json, str)
+            or len(evidence_references_json) > _MAX_REFERENCE_JSON_CHARS):
+        raise ValueError("evidence reference JSON must be a string of at most 4096 characters")
+    try:
+        references = json.loads(
+            evidence_references_json,
+            object_pairs_hook=_object_without_duplicate_keys,
+            parse_constant=_reject_nonfinite_json,
+        )
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError("invalid evidence reference JSON") from exc
+    if not isinstance(references, dict):
+        raise ValueError("evidence reference JSON must contain one object")
+    return build_operations_checklist(
+        profile_id=profile_id,
+        incident_id=incident_id,
+        evidence_references=references,
+    )
 
 
 def build_operations_checklist(*, profile_id: str, incident_id: str,

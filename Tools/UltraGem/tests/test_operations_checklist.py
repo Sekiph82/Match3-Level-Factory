@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -7,7 +8,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from operations_checklist import CHECKS, build_operations_checklist
+from operations_checklist import (
+    CHECKS,
+    build_operations_checklist,
+    build_operations_checklist_from_json,
+)
 
 
 class OperationsChecklistTests(unittest.TestCase):
@@ -24,6 +29,17 @@ class OperationsChecklistTests(unittest.TestCase):
         self.assertFalse(result["rollbackExecuted"])
         self.assertFalse(result["keyRotationExecuted"])
         self.assertFalse(result["networkOrProviderAccessPerformed"])
+
+    def test_partial_reference_set_reports_only_the_stable_missing_check_id(self):
+        references = self.references()
+        del references["known_good_manifest"]
+        result = build_operations_checklist(
+            profile_id="Coral_Rescue", incident_id="INC-712",
+            evidence_references=references,
+        )
+        self.assertEqual(result["missingEvidenceCheckIds"], ["known_good_manifest"])
+        row = next(item for item in result["checks"] if item["checkId"] == "known_good_manifest")
+        self.assertEqual(row["status"], "MISSING")
 
     def test_complete_candidate_references_remain_unverified_and_non_authorizing(self):
         result = build_operations_checklist(profile_id="Coral_Rescue", incident_id="INC-712",
@@ -64,6 +80,24 @@ class OperationsChecklistTests(unittest.TestCase):
         self.assertFalse(build_operations_checklist(profile_id="Wonder_Pop", incident_id="INC-712",
                             evidence_references=valid)["productionAuthorization"])
 
+    def test_overlong_control_character_and_forged_authorization_inputs_reject(self):
+        for reference in ("owner/" + "a" * 123, "owner/approval\nforged"):
+            with self.subTest(reference=reference[:20]), self.assertRaises(ValueError):
+                build_operations_checklist(
+                    profile_id="Coral_Rescue", incident_id="INC-712",
+                    evidence_references={"owner_approval": reference},
+                )
+        with self.assertRaisesRegex(ValueError, "unknown checklist evidence reference"):
+            build_operations_checklist(
+                profile_id="Coral_Rescue", incident_id="INC-712",
+                evidence_references={"productionAuthorization": "owner/approved"},
+            )
+        with self.assertRaises(TypeError):
+            build_operations_checklist(
+                profile_id="Coral_Rescue", incident_id="INC-712",
+                productionAuthorization=True,
+            )
+
     def test_output_contains_only_fixed_checks_and_no_secret_material_fields(self):
         result = build_operations_checklist(profile_id="Garage_Legends", incident_id="INC.1")
         self.assertEqual([row["checkId"] for row in result["checks"]], [key for key, _ in CHECKS])
@@ -71,6 +105,37 @@ class OperationsChecklistTests(unittest.TestCase):
         self.assertFalse(forbidden.intersection(result))
         self.assertTrue(all("Unverified" in key or key in {"checkId", "requirement", "status", "executionPerformed"}
                             for row in result["checks"] for key in row))
+
+    def test_json_entry_point_rejects_duplicate_keys_before_dict_conversion(self):
+        cases = [
+            '{"owner_approval":"ticket/first","owner_approval":"ticket/second"}',
+            '{"outer":{"reference":"ticket/first","reference":"ticket/second"}}',
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload), self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
+                build_operations_checklist_from_json(
+                    profile_id="Coral_Rescue", incident_id="INC-712",
+                    evidence_references_json=payload,
+                )
+
+    def test_json_entry_point_is_bounded_and_uses_the_same_reference_validation(self):
+        payload = json.dumps(self.references(), sort_keys=True)
+        parsed = build_operations_checklist_from_json(
+            profile_id="Coral_Rescue", incident_id="INC-712",
+            evidence_references_json=payload,
+        )
+        direct = build_operations_checklist(
+            profile_id="Coral_Rescue", incident_id="INC-712",
+            evidence_references=self.references(),
+        )
+        self.assertEqual(parsed, direct)
+        invalid_payloads = ["[]", "not-json", '{"owner_approval": NaN}', " " * 4097]
+        for raw in invalid_payloads:
+            with self.subTest(raw=raw[:20]), self.assertRaises(ValueError):
+                build_operations_checklist_from_json(
+                    profile_id="Coral_Rescue", incident_id="INC-712",
+                    evidence_references_json=raw,
+                )
 
 
 if __name__ == "__main__":
