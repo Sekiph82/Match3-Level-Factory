@@ -34,6 +34,7 @@ _SECRET_WORD = re.compile(r"(?i)(?:^|[._/-])(?:secret|password|bearer|token)(?:$
 _TOKEN_SHAPED_VALUE = re.compile(
     r"(?i)(?:gh[pousr]_[a-z0-9_]{20,}|github_pat_[a-z0-9_]{20,}|"
     r"(?:sk|rk)_(?:live|test)_[a-z0-9]{12,}|"
+    r"sk-(?:proj|ant|or-v1)-[a-z0-9_-]{20,}|"
     r"xox[baprs]-[a-z0-9-]{20,}|AIza[a-z0-9_-]{30,}|"
     r"azdpat_[a-z0-9]{20,}|glpat-[a-z0-9_-]{20,}|"
     r"npm_[a-z0-9]{20,}|hf_[a-z0-9]{20,}|pypi-[a-z0-9_-]{20,})"

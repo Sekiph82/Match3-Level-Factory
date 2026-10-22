@@ -78,6 +78,7 @@ class OperationsChecklistTests(unittest.TestCase):
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/glpat-" + "e" * 28}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/npm_" + "f" * 32}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "ticket/glpat-" + "g" * 28}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "drive/sk-proj-" + "h" * 32}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": 42}},
         ]
         for kwargs in cases:
