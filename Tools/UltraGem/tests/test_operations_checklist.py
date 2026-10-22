@@ -17,7 +17,9 @@ from operations_checklist import (
 
 class OperationsChecklistTests(unittest.TestCase):
     def references(self):
-        return {key: f"ticket/LFX-M10-007-{index:02d}" for index, (key, _) in enumerate(CHECKS, 1)}
+        references = {key: f"ticket/LFX-M10-007-{index:02d}" for index, (key, _) in enumerate(CHECKS, 1)}
+        references["known_good_manifest"] = "drive/SHA256-" + "a" * 64
+        return references
 
     def test_incomplete_checklist_names_missing_steps_and_keeps_all_actions_disabled(self):
         result = build_operations_checklist(profile_id="Coral_Rescue", incident_id="INC-712")
@@ -79,6 +81,8 @@ class OperationsChecklistTests(unittest.TestCase):
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/npm_" + "f" * 32}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "ticket/glpat-" + "g" * 28}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "drive/sk-proj-" + "h" * 32}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "drive/" + "j" * 40}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "drive/SHA256-" + "k" * 63 + "z"}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": 42}},
         ]
         for kwargs in cases:

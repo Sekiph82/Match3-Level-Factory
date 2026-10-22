@@ -23,7 +23,7 @@ CHECKS = (
 
 _REFERENCE_ID_PATTERNS = {
     "ticket": re.compile(r"(?:LFX-M10-007-[0-9]{2}|INC-[A-Z0-9]{2,12}-[0-9]{4,12})", re.I),
-    "drive": re.compile(r"[A-Za-z0-9_-]{25,64}"),
+    "drive": re.compile(r"SHA256-[A-F0-9]{64}", re.I),
     "audit": re.compile(r"(?:AUD-LFX-M10-007-[0-9]{2}|AUD-[0-9]{4}-[0-9]{2})", re.I),
     "build": re.compile(r"(?:BUILD|GH)-[0-9]{6,20}", re.I),
     "provider": re.compile(r"(?:CASE|INC|CHG|ROT|VALID|REVOKE)-[A-Z0-9]{2,16}-[0-9]{3,15}", re.I),
