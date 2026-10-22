@@ -80,6 +80,7 @@ namespace Match3Factory.Tests
                 + Path.DirectorySeparatorChar;
             Assert.That(outputDirectory.StartsWith(allowedPrefix, StringComparison.OrdinalIgnoreCase), Is.True,
                 "Player build output must stay in the task-owned evidence directory.");
+            AssertNoReparsePoints(repositoryRoot, outputDirectory);
             Assert.That(Directory.Exists(outputDirectory) || File.Exists(outputDirectory), Is.False,
                 "Refusing to overwrite an existing build output path.");
 
@@ -129,6 +130,26 @@ namespace Match3Factory.Tests
                     EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 foreach (string scenePath in scenePaths) AssetDatabase.DeleteAsset(scenePath);
                 AssetDatabase.Refresh();
+                foreach (string scenePath in scenePaths)
+                {
+                    Assert.That(File.Exists(scenePath), Is.False, "Temporary smoke scene was not removed.");
+                    Assert.That(File.Exists(scenePath + ".meta"), Is.False, "Temporary smoke scene metadata was not removed.");
+                }
+            }
+        }
+
+        private static void AssertNoReparsePoints(string root, string target)
+        {
+            string current = Path.GetFullPath(root);
+            string relative = Path.GetRelativePath(current, Path.GetFullPath(target));
+            Assert.That(relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal), Is.False,
+                "Output path must stay below the repository root.");
+            foreach (string segment in relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = Path.Combine(current, segment);
+                if (!Directory.Exists(current) && !File.Exists(current)) continue;
+                Assert.That(File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint), Is.False,
+                    "Refusing reparse-point output paths.");
             }
         }
 
