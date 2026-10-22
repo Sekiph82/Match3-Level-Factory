@@ -24,6 +24,12 @@ CHECKS = (
 _ALLOWED_REFERENCE = re.compile(r"^(?:ticket|drive|audit|build|provider|owner)/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 _SECRET_ASSIGNMENT = re.compile(r"(?i)(?:token|password|secret|bearer|api[_-]?key)\s*[:=]")
 _SECRET_WORD = re.compile(r"(?i)(?:^|[._/-])(?:secret|password|bearer|token)(?:$|[._/-])")
+_TOKEN_SHAPED_VALUE = re.compile(
+    r"(?i)(?:gh[pousr]_[a-z0-9_]{20,}|github_pat_[a-z0-9_]{20,}|"
+    r"(?:sk|rk)_(?:live|test)_[a-z0-9]{12,}|"
+    r"xox[baprs]-[a-z0-9-]{20,}|AIza[a-z0-9_-]{30,}|"
+    r"azdpat_[a-z0-9]{20,})"
+)
 _MAX_REFERENCE_JSON_CHARS = 4_096
 
 
@@ -97,6 +103,8 @@ def build_operations_checklist(*, profile_id: str, incident_id: str,
                 or _SECRET_ASSIGNMENT.search(value)
                 or _SECRET_WORD.search(value)):
             raise ValueError(f"invalid opaque evidence reference for {key}")
+        if _TOKEN_SHAPED_VALUE.search(value):
+            raise ValueError(f"token-shaped evidence reference is not allowed for {key}")
         normalized[key] = value
 
     checklist = [{

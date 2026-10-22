@@ -71,6 +71,10 @@ class OperationsChecklistTests(unittest.TestCase):
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "https://example.test/key"}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "drive/API_KEY=abc"}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "drive/secret"}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/ghp_" + "a" * 36}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/sk_live_" + "b" * 24}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/github_pat_" + "c" * 32}},
+            {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": "provider/xoxb-" + "d" * 24}},
             {"profile_id": "Coral_Rescue", "incident_id": "INC-1", "evidence_references": {"owner_approval": 42}},
         ]
         for kwargs in cases:
