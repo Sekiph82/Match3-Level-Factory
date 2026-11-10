@@ -1,3 +1,13 @@
+# Codex decommissioned: 2026-11-10 owner handover to Claude Code
+
+**STOP WRITES FROM SCHEDULED CODEX.** The owner assigned all 174 open LFX tasks exclusively to Claude Code. This instruction supersedes every older Codex source-edit, local-test, milestone, audit-file and root TASKS ownership claim below while preserving all historical decisions, task acceptance and security/Engine gates. **AGENTS.md is now a legacy Codex no-write notice; CLAUDE.md and the root TASKS.md define the active Claude workflow.**
+
+- A scheduled Codex job that starts for this repo MUST NOT select tasks, modify source/tests/TASKS, start Unity, commit/push, or upload/overwrite Drive artifacts. Its only authorized result: `TRANSFERRED_TO_CLAUDE_CODE_NO_WRITE`, then stop. The owner must separately pause any external Codex schedule; a GitHub commit cannot cancel the scheduler.
+- Only Claude Code may implement and update task progress, with verified independent reviewer approval required before `PASS` and `[x]`.
+- Existing release, ENG-M24, Android/ADB, payment, license, owner-file protection and no-Action restrictions still apply. This notice does NOT grant any account/GitHub App permission.
+
+---
+
 # Codex Task Automation
 
 This file configures sequential, cost-aware Codex work for this repository. It adds no task ledger and does not authorize product work by itself.

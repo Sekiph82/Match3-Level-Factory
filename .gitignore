@@ -12,3 +12,5 @@ __pycache__/
 /gamestats/
 /journey-auto/
 /Artifacts/
+.claude/settings.local.json
+**/.claude/settings.local.json
