@@ -167,6 +167,29 @@ class M12MilestonePreflightTests(unittest.TestCase):
                 **{p: ["level.001"] for p in PROFILES},
                 "Coral_Rescue": ["level.001", "level.001"]})
 
+    def test_event_content_version_passthrough_and_reauthoring(self):
+        base = self.event("Coral_Rescue", "weekly.01")
+        first = self.call(events=[base])
+        item = first["engineContentEnvelopes"]["Coral_Rescue"]["items"][0]
+        self.assertEqual(item["contentVersion"], 1)
+        prev = first["engineContentEnvelopes"]
+        self.assertEqual(self.call(events=[base], previous_engine_envelopes=prev), first)  # unchanged
+        moved = dict(base, startLocal="2026-10-19T10:00:00")  # re-authored window
+        with self.assertRaisesRegex(ValueError, "bumped contentVersion"):
+            self.call(events=[moved], previous_engine_envelopes=prev)
+        bumped = self.call(events=[dict(moved, contentVersion=2)], previous_engine_envelopes=prev)
+        new = bumped["engineContentEnvelopes"]["Coral_Rescue"]["items"][0]
+        self.assertEqual((new["contentVersion"], new["payload"]["startUtc"]), (2, "2026-10-19T07:00:00Z"))
+        with self.assertRaisesRegex(ValueError, "regresses"):
+            self.call(events=[base], previous_engine_envelopes=bumped["engineContentEnvelopes"])
+        for bad in (0, -1, True, "2", 2.0, 2**31):
+            with self.subTest(version=bad), self.assertRaises(ValueError):
+                self.call(events=[dict(base, contentVersion=bad)])
+        for bad_prev in ({"Unknown_Game": {}}, {"Coral_Rescue": {"gameId": "Dino_Islands", "items": []}},
+                         {"Coral_Rescue": {"gameId": "Coral_Rescue", "items": [{"contentKind": "Event"}]}}):
+            with self.subTest(prev=bad_prev), self.assertRaises(ValueError):
+                self.call(events=[base], previous_engine_envelopes=bad_prev)
+
     def test_unsigned_engine_envelope_export_per_game(self):
         import engine_envelope as ee
         r = self.call()

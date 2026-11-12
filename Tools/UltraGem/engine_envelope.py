@@ -6,6 +6,10 @@ Engine commit ENGINE_CONTRACT_SHA). Everything below that validates is a MIRROR 
 the Engine receiver so the Factory fails closed before export; the Engine stays
 authoritative and re-validates every envelope. Unsigned only: the payloadSha256 is
 an unkeyed integrity digest, not authentication. No signing, network or cloud write.
+
+Digest note: Engine-bound digests use ensure_ascii=True. Older M12 receipts whose
+digest was computed with ensure_ascii=False will not reproduce if they contained
+non-ASCII text (all-ASCII receipts are byte-identical either way).
 """
 from __future__ import annotations
 
@@ -127,16 +131,27 @@ def loads_strict(text: str) -> Any:
 
     try:
         value = json.loads(text, object_pairs_hook=pairs, parse_float=no_float, parse_constant=no_float)
-    except json.JSONDecodeError as exc:
-        raise EnvelopeError("MalformedDocument", str(exc)) from exc
+    except EnvelopeError:
+        raise
+    except RecursionError:  # deeper than the interpreter stack; Engine: "nesting too deep"
+        raise EnvelopeError("MalformedDocument", "nesting too deep") from None
+    except ValueError as exc:  # JSONDecodeError and int digit-limit overflow
+        raise EnvelopeError("MalformedDocument", str(exc)) from None
     _check_tree(value)
     return value
 
 
 def dumps(envelope: dict[str, Any]) -> str:
-    """Stable pretty file form (Engine accepts any JSON whitespace); ASCII only."""
+    """Stable pretty file form (Engine accepts any JSON whitespace); ASCII only.
+
+    This is the exact text the Factory writes, so the Engine reader's 256 KiB input
+    limit is enforced on it here (MalformedDocument, as the Engine reports it).
+    """
     _check_tree(envelope)
-    return json.dumps(envelope, indent=2, ensure_ascii=True, allow_nan=False) + "\n"
+    text = json.dumps(envelope, indent=2, ensure_ascii=True, allow_nan=False) + "\n"
+    if len(text.encode("utf-8")) > MAX_UTF8_BYTES:
+        raise EnvelopeError("MalformedDocument", f"input exceeds {MAX_UTF8_BYTES} UTF-8 bytes")
+    return text
 
 
 # ---- Engine rule mirrors -------------------------------------------------------
@@ -479,18 +494,22 @@ def event_item_from_calendar(schedule: dict[str, Any], *, game_id: str, level_id
 
 
 def build_envelope(*, game_id: str, producer_id: str, items: list[dict[str, Any]],
-                   known_world_ids: Iterable[str] = (), known_level_ids: Iterable[str] = ()) -> dict[str, Any]:
-    """Unsigned Engine envelope; validated against the Engine mirror before it is returned."""
+                   known_world_ids: Iterable[str] = (), known_level_ids: Iterable[str] = (),
+                   allowed_kinds: Iterable[str] = KINDS) -> dict[str, Any]:
+    """Unsigned Engine envelope; validated against the Engine mirror (incl. the receiving
+    game's allowed content kinds and the 256 KiB limit on the written text) before return."""
     envelope = {"schemaVersion": SCHEMA_VERSION, "producerId": producer_id,
                 "gameId": game_id_for_profile(game_id), "items": list(items)}
-    validate_envelope(envelope, game_id=game_id, known_world_ids=known_world_ids,
-                      known_level_ids=known_level_ids)
+    validate_envelope(envelope, game_id=game_id, allowed_kinds=allowed_kinds,
+                      known_world_ids=known_world_ids, known_level_ids=known_level_ids)
+    dumps(envelope)
     return envelope
 
 
 def compile_game_envelopes(items_by_game: dict[str, list[dict[str, Any]]], *, producer_id: str,
                            known_world_ids: dict[str, Iterable[str]] | None = None,
-                           known_level_ids: dict[str, Iterable[str]] | None = None) -> dict[str, dict[str, Any]]:
+                           known_level_ids: dict[str, Iterable[str]] | None = None,
+                           allowed_kinds: dict[str, Iterable[str]] | None = None) -> dict[str, dict[str, Any]]:
     """LFX-M14-002: one unsigned envelope per Engine gameId; all five titles required.
 
     LiveOps policy, age guards and offer metadata are not Engine content kinds and
@@ -498,9 +517,10 @@ def compile_game_envelopes(items_by_game: dict[str, list[dict[str, Any]]], *, pr
     """
     if not isinstance(items_by_game, dict) or set(items_by_game) != set(GAME_IDS):
         raise EnvelopeError("GameMismatch", "content for exactly the five Engine game ids required")
-    worlds, levels = known_world_ids or {}, known_level_ids or {}
-    if not set(worlds) <= set(GAME_IDS) or not set(levels) <= set(GAME_IDS):
-        raise EnvelopeError("GameMismatch", "known ids keyed by unknown game id")
+    worlds, levels, kinds = known_world_ids or {}, known_level_ids or {}, allowed_kinds or {}
+    if not set(worlds) | set(levels) | set(kinds) <= set(GAME_IDS):
+        raise EnvelopeError("GameMismatch", "per-game settings keyed by unknown game id")
     return {g: build_envelope(game_id=g, producer_id=producer_id, items=items_by_game[g],
-                              known_world_ids=worlds.get(g, ()), known_level_ids=levels.get(g, ()))
+                              known_world_ids=worlds.get(g, ()), known_level_ids=levels.get(g, ()),
+                              allowed_kinds=kinds.get(g, KINDS))
             for g in GAME_IDS}

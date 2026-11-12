@@ -328,6 +328,53 @@ class EngineRuleMirrorTests(unittest.TestCase):
         with self.assertRaises(EnvelopeError):
             ee.level_item_from_draft(draft(), game_id="Coral_Rescue", order=1, goal_kinds={"g1": "CollectPiece"})
 
+    def test_written_text_size_limit_is_engine_256_kib(self):
+        def env(pad):
+            items = [ee.world_item("cr.world.reef", order=1, extensions={"x-note": "a" * pad})]
+            return {"schemaVersion": "1.0", "producerId": "p", "gameId": "Coral_Rescue", "items": items}
+
+        base = len(ee.dumps(env(0)).encode("utf-8"))
+        exact = ee.MAX_UTF8_BYTES - base
+        text = ee.dumps(env(exact))
+        self.assertEqual(len(text.encode("utf-8")), ee.MAX_UTF8_BYTES)
+        built = ee.build_envelope(game_id="Coral_Rescue", producer_id="p", items=env(exact)["items"])
+        ee.validate_text(ee.dumps(built), **CORAL)
+        for fn in (lambda: ee.dumps(env(exact + 1)),
+                   lambda: ee.build_envelope(game_id="Coral_Rescue", producer_id="p", items=env(exact + 1)["items"]),
+                   lambda: ee.loads_strict(text[:-1] + "  \n")):
+            with self.assertRaises(EnvelopeError) as ctx:
+                fn()
+            self.assertEqual(ctx.exception.code, "MalformedDocument")
+        # Near-limit realistic batch: many full levels still fits and round-trips.
+        levels = [ee.level_item(f"cr.level.{i:04d}", world_id="cr.world.reef", order=i + 1, moves=25,
+                                objectives=OBJECTIVES, obstacle_ids=["obstacle.ice"]) for i in range(380)]
+        big = ee.build_envelope(game_id="Coral_Rescue", producer_id="p",
+                                items=[ee.world_item("cr.world.reef", order=1)] + levels)
+        self.assertGreater(len(ee.dumps(big)), 230 * 1024)
+        ee.validate_text(ee.dumps(big), **CORAL)
+        with self.assertRaises(EnvelopeError):
+            ee.build_envelope(game_id="Coral_Rescue", producer_id="p",
+                              items=[ee.world_item("cr.world.reef", order=1)] + levels + [
+                                  ee.level_item(f"cr.level.x{i:04d}", world_id="cr.world.reef", order=400 + i,
+                                                moves=25, objectives=OBJECTIVES, obstacle_ids=["obstacle.ice"])
+                                  for i in range(100)])
+
+    def test_reader_maps_deep_nesting_and_huge_integers_to_malformed(self):
+        for text in ("[" * 100000 + "]" * 100000, '{"a":' + "9" * 5000 + "}", '{"a":' * 50000 + "1" + "}" * 50000):
+            with self.subTest(size=len(text)), self.assertRaises(EnvelopeError) as ctx:
+                ee.loads_strict(text)
+            self.assertEqual(ctx.exception.code, "MalformedDocument")
+
+    def test_receiver_allowed_kinds_reported_like_engine(self):
+        reef = ee.world_item("cr.world.reef", order=1)
+        lvl = ee.level_item("cr.level.0001", world_id="cr.world.reef", order=1, moves=20,
+                            objectives=OBJECTIVES, obstacle_ids=[])
+        with self.assertRaises(EnvelopeError) as ctx:
+            ee.build_envelope(game_id="Coral_Rescue", producer_id="p", items=[reef, lvl], allowed_kinds=["World"])
+        self.assertEqual([x[:2] for x in ctx.exception.items], [(1, "ContentKindNotAllowed")])
+        ee.build_envelope(game_id="Coral_Rescue", producer_id="p", items=[reef, lvl],
+                          allowed_kinds=["World", "Level"])
+
 
 class GameCompilationTests(unittest.TestCase):
     def content(self):
@@ -356,6 +403,18 @@ class GameCompilationTests(unittest.TestCase):
                     with self.assertRaises(EnvelopeError):
                         ee.validate_text(text, game_id=other)
         self.assertEqual(out, ee.compile_game_envelopes(self.content(), producer_id=ee.PRODUCER_ID))
+
+    def test_compilation_per_game_allowed_kinds(self):
+        content = self.content()
+        out = ee.compile_game_envelopes(content, producer_id=ee.PRODUCER_ID,
+                                        allowed_kinds={"Wonder_Pop": ["World"]})
+        self.assertEqual(set(out), set(ee.GAME_IDS))
+        with self.assertRaises(EnvelopeError) as ctx:
+            ee.compile_game_envelopes(content, producer_id=ee.PRODUCER_ID,
+                                      allowed_kinds={"Wonder_Pop": ["Level", "Event"]})
+        self.assertEqual(ctx.exception.items[0][1], "ContentKindNotAllowed")
+        with self.assertRaises(EnvelopeError):
+            ee.compile_game_envelopes(content, producer_id=ee.PRODUCER_ID, allowed_kinds={"Nope_Game": ["World"]})
 
     def test_compilation_fails_closed(self):
         content = self.content()

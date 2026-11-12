@@ -30,6 +30,7 @@ _EXP_FIELDS = {
     "gameProfileId", "experimentId", "variants", "holdoutPercent",
     "audienceMode", "rollbackReference",
 }
+_OPTIONAL_EVENT_FIELDS = {"contentVersion"}  # Engine contentVersion, default 1
 _POLICY_FIELDS = {"flags", "caps"}
 _CONTENT_KINDS = {"LEVEL", "WORLD", "GOAL", "COLLECTION"}
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9._-]{2,79}\Z")
@@ -46,6 +47,26 @@ def _strict_server_sample(sample: str) -> str:
     return sample
 
 
+def _previous_event_versions(previous: dict[str, Any] | None) -> dict[tuple[str, str], tuple[int, str]]:
+    """(gameId, eventId) -> (contentVersion, recomputed payload digest) of a prior export."""
+    if previous is None:
+        return {}
+    if not isinstance(previous, dict) or not set(previous) <= set(PROFILES):
+        raise ValueError("previous engine envelopes must be keyed by game id")
+    out = {}
+    for game, env in previous.items():
+        items = env.get("items") if isinstance(env, dict) and env.get("gameId") == game else None
+        if not isinstance(items, list):
+            raise ValueError("malformed previous engine envelope")
+        for it in items:
+            if (not isinstance(it, dict) or it.get("contentKind") != "Event" or
+                    not is_valid_id(it.get("contentId")) or type(it.get("contentVersion")) is not int or
+                    not isinstance(it.get("payload"), dict)):
+                raise ValueError("malformed previous engine envelope item")
+            out[(game, it["contentId"])] = (it["contentVersion"], payload_sha256(it["payload"]))
+    return out
+
+
 def preflight_m12_milestone(*, events: list[dict[str, Any]],
                             policies: dict[str, dict[str, Any]],
                             available_content: dict[str, list[str]],
@@ -53,12 +74,18 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
                             manifest_sha256: str, git_commit_sha: str,
                             disabled_event_ids: list[str] | None = None,
                             experiments: list[dict[str, Any]] | None = None,
-                            owner_review_reference: str | None = None
+                            owner_review_reference: str | None = None,
+                            previous_engine_envelopes: dict[str, Any] | None = None
                             ) -> dict[str, Any]:
     """Dry-run all 13 M12 acceptance areas for the five declared titles.
 
     A caller-supplied server UTC string and previous-claim boolean are NOT
     trusted backend attestation. No recurring occurrence expansion or grant.
+
+    previous_engine_envelopes is an earlier result's engineContentEnvelopes. Each
+    event's optional contentVersion must not go below the previously exported
+    version, and a changed Engine payload at the same version is rejected (the
+    Engine would report ContentVersionRegression / ContentVersionConflict).
     """
     if not isinstance(git_commit_sha, str) or _SHA40.fullmatch(git_commit_sha) is None:
         raise ValueError("40-lowercase-hex source SHA required")
@@ -121,8 +148,11 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
     engine_items: dict[str, list[dict[str, Any]]] = {}
     engine_exclusions = []
     for item in events:
-        if not isinstance(item, dict) or set(item) != _EVENT_FIELDS:
+        if not isinstance(item, dict) or not _EVENT_FIELDS <= set(item) <= _EVENT_FIELDS | _OPTIONAL_EVENT_FIELDS:
             raise ValueError("unknown or missing event authoring fields")
+        version = item.get("contentVersion", 1)
+        if type(version) is not int or not 1 <= version <= 2**31 - 1:
+            raise ValueError("event contentVersion must be an integer >= 1")
         profile, eid = item["profileId"], item["eventId"]
         if profile not in PROFILES or not isinstance(eid, str) or _ID.fullmatch(eid) is None:
             raise ValueError("invalid per-title event")
@@ -162,7 +192,8 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
         else:
             excluded = None
             engine_items.setdefault(profile, []).append(
-                event_item_from_calendar(schedule, game_id=profile, level_ids=[cid]))
+                event_item_from_calendar(schedule, game_id=profile, level_ids=[cid],
+                                         content_version=version))
         if excluded:
             engine_exclusions.append({"gameId": profile, "eventId": eid, "reason": excluded})
         previews.append({
@@ -214,8 +245,18 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
     # Engine-bound: string schemaVersion "1.0", gameId, ASCII-canonical payload digests.
     # Level references resolve only against caller-declared available content; the
     # Engine re-validates against its own shipped/applied content on receipt.
-    # ponytail: contentVersion is always 1 (no version input in the M12 event schema);
-    # a re-authored event needs a version field before the Engine accepts a change.
+    # Each event id appears once per calendar batch (duplicates rejected above), so
+    # monotonic versions are enforced against the previous export, as the Engine does.
+    prior = _previous_event_versions(previous_engine_envelopes)
+    for game, items in engine_items.items():
+        for ev in items:
+            old = prior.get((game, ev["contentId"]))
+            if old is None:
+                continue
+            if ev["contentVersion"] < old[0]:
+                raise ValueError(f"{game}/{ev['contentId']} contentVersion regresses below v{old[0]}")
+            if ev["contentVersion"] == old[0] and ev["payloadSha256"] != old[1]:
+                raise ValueError(f"{game}/{ev['contentId']} changed; re-authored event requires a bumped contentVersion")
     engine_envelopes = {
         game: build_envelope(
             game_id=game, producer_id=PRODUCER_ID,
@@ -231,6 +272,8 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
         "disabledEventIds": sorted(stops),
         "engineContentEnvelopes": engine_envelopes,
     }
+    # ensure_ascii=True (Engine canonical form): receipts made before this change with
+    # non-ASCII content would hash differently and are not reproducible byte-for-byte.
     preview_digest = payload_sha256(unsigned_payload)
     matrix = {
         "LFX-M12-001": "ENG_M20_010_ENVELOPE_ADAPTER_PINNED_CLAIM_CONTRACT_MISSING",
