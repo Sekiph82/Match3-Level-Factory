@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import re
 
+from engine_envelope import parse_utc
 from theme_contract import PROFILES
 
 _VALID_CADENCES={"DAILY","WEEKLY","SEASONAL"}
@@ -86,10 +87,12 @@ def preview_event_window(schedule: dict, *, observed_server_utc: str) -> str:
         raise ValueError("calendar proposal required")
     if not isinstance(observed_server_utc,str) or not observed_server_utc.endswith("Z"):
         raise ValueError("explicit UTC server sample required")
+    # Engine ENG-M20-010 UTC rule: exact yyyy-MM-ddTHH:mm:ssZ; fractional seconds,
+    # offsets and basic/space ISO forms are rejected, never rounded.
     try:
-        observed=datetime.fromisoformat(observed_server_utc.replace("Z","+00:00"))
-        start=datetime.fromisoformat(schedule["startUtc"].replace("Z","+00:00"))
-        end=datetime.fromisoformat(schedule["endUtc"].replace("Z","+00:00"))
+        observed=parse_utc(observed_server_utc)
+        start=parse_utc(schedule["startUtc"])
+        end=parse_utc(schedule["endUtc"])
     except (KeyError,TypeError,ValueError) as exc:
         raise ValueError("invalid UTC sample") from exc
     if observed<start:return "SCHEDULED_PREVIEW"
