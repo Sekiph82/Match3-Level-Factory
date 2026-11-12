@@ -1,18 +1,21 @@
 """LFX-M12 single-milestone offline LiveOps authoring / preview review.
 
 Combines existing calendar, conservative age/cap policies, experiment metadata
-and emergency event stops. No ENG-M20/24 interface, idempotent claim server,
-client state, cloud provider, key, signed config or grant operation exists here.
+and emergency event stops. LFX-M12-008 exports UNSIGNED per-gameId Engine
+ENG-M20-010 content envelopes (Event items) through engine_envelope.py. No ENG-M24
+interface, idempotent claim server, client state, cloud provider, key, signed
+config, cloud writer or grant operation exists here.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from typing import Any
 
 from age_liveops_policy import validate_age_liveops_config, FLAGS
 from audience_caps import evaluate_content_caps
+from engine_envelope import (ENGINE_CONTRACT_SHA, PRODUCER_ID, build_envelope,
+                             event_item_from_calendar, is_valid_id, parse_utc,
+                             payload_sha256)
 from event_calendar import propose_calendar_event, preview_event_window
 from experiment_config import propose_experiment
 from theme_contract import PROFILES
@@ -33,25 +36,14 @@ _ID = re.compile(r"[A-Za-z][A-Za-z0-9._-]{2,79}\Z")
 _CONTENT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,127}\Z")
 _SHA40 = re.compile(r"[0-9a-f]{40}\Z")
 _SHA64 = re.compile(r"[0-9a-f]{64}\Z")
-_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 
 
 def _strict_server_sample(sample: str) -> str:
-    if not isinstance(sample, str) or _UTC.fullmatch(sample) is None:
-        raise ValueError("explicit exact YYYY-MM-DDTHH:MM:SSZ sample required")
-    from datetime import datetime, timezone
     try:
-        if datetime.fromisoformat(sample.replace("Z", "+00:00")).tzinfo != timezone.utc:
-            raise ValueError("UTC sample is not UTC")
+        parse_utc(sample)  # Engine rule: exact YYYY-MM-DDTHH:MM:SSZ, ASCII digits, no fraction
     except ValueError as exc:
-        raise ValueError("invalid server-time sample") from exc
+        raise ValueError("explicit exact YYYY-MM-DDTHH:MM:SSZ sample required") from exc
     return sample
-
-
-def _metadata_digest(payload: dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(
-        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"),
-        allow_nan=False).encode("utf-8")).hexdigest()
 
 
 def preflight_m12_milestone(*, events: list[dict[str, Any]],
@@ -126,6 +118,8 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
 
     previews = []
     known_ids = set()
+    engine_items: dict[str, list[dict[str, Any]]] = {}
+    engine_exclusions = []
     for item in events:
         if not isinstance(item, dict) or set(item) != _EVENT_FIELDS:
             raise ValueError("unknown or missing event authoring fields")
@@ -157,6 +151,20 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
             display = "ACTIVE_PREVIOUSLY_RECORDED_BY_CALLER_DISPLAY_ONLY"
         else:
             display = phase
+        if key in stops:
+            excluded = "STOPPED_EVENT_NOT_EXPORTED"
+        elif item["contentKind"] != "LEVEL":
+            excluded = "CONTENT_KIND_HAS_NO_ENGINE_EVENT_MAPPING"
+        elif cid not in content_sets[profile]:
+            excluded = "MISSING_REFERENCED_CONTENT"
+        elif not is_valid_id(cid):
+            excluded = "CONTENT_ID_NOT_ENGINE_ID"
+        else:
+            excluded = None
+            engine_items.setdefault(profile, []).append(
+                event_item_from_calendar(schedule, game_id=profile, level_ids=[cid]))
+        if excluded:
+            engine_exclusions.append({"gameId": profile, "eventId": eid, "reason": excluded})
         previews.append({
             "profileId": profile, "eventId": eid,
             "contentKind": item["contentKind"], "contentId": cid,
@@ -202,23 +210,37 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
         })
 
     previews.sort(key=lambda row: (row["profileId"], row["eventId"]))
+    engine_exclusions.sort(key=lambda row: (row["gameId"], row["eventId"]))
+    # Engine-bound: string schemaVersion "1.0", gameId, ASCII-canonical payload digests.
+    # Level references resolve only against caller-declared available content; the
+    # Engine re-validates against its own shipped/applied content on receipt.
+    # ponytail: contentVersion is always 1 (no version input in the M12 event schema);
+    # a re-authored event needs a version field before the Engine accepts a change.
+    engine_envelopes = {
+        game: build_envelope(
+            game_id=game, producer_id=PRODUCER_ID,
+            items=sorted(engine_items[game], key=lambda x: x["contentId"]),
+            known_level_ids=sorted(c for c in content_sets[game] if is_valid_id(c)))
+        for game in sorted(engine_items)
+    }
     experiment_receipts.sort(key=lambda row: (row["gameProfileId"], row["experimentId"]))
     unsigned_payload = {
         "events": previews,
         "experiments": experiment_receipts,
         "policyDiagnostics": policy_receipts,
         "disabledEventIds": sorted(stops),
+        "engineContentEnvelopes": engine_envelopes,
     }
-    preview_digest = _metadata_digest(unsigned_payload)
+    preview_digest = payload_sha256(unsigned_payload)
     matrix = {
-        "LFX-M12-001": "LOCAL_SCHEMA_PREVIEW_ONLY_ENG_M20_NOT_PINNED",
+        "LFX-M12-001": "ENG_M20_010_ENVELOPE_ADAPTER_PINNED_CLAIM_CONTRACT_MISSING",
         "LFX-M12-002": "DST_AWARE_SINGLE_WINDOWS_RECURRENCE_BACKEND_NOT_RUN",
         "LFX-M12-003": "NO_PREMIUM_REWARD_GRANTS_OR_PRODUCTION_PROMOTION",
         "LFX-M12-004": "NON_PERSONALIZED_EXPERIMENT_PROPOSALS_ONLY",
         "LFX-M12-005": "ALL_FIVE_AGE_AND_AD_POLICIES_FAIL_CLOSED",
         "LFX-M12-006": "STOPPED_EVENT_LOCAL_PREVIEW_ONLY_NO_REMOTE_SWITCH",
         "LFX-M12-007": "FIVE_TITLE_EVENT_DISPLAY_SIMULATOR_NO_CLAIM",
-        "LFX-M12-008": "UNSIGNED_PREVIEW_DIGEST_NO_CLOUD_EXPORT",
+        "LFX-M12-008": "UNSIGNED_ENGINE_ENVELOPE_EXPORT_NO_SIGNING_NO_CLOUD_WRITER",
         "LFX-M12-009": "OWNER_REVIEW_REFERENCE_UNVERIFIED_NO_APPROVAL",
         "LFX-M12-010": "MISSING_CONTENT_STALE_SERVER_DUPLICATE_PREVIEW_BLOCKED",
         "LFX-M12-011": "INDEPENDENT_POLICY_AND_IDEMPOTENT_BACKEND_AUDIT_NOT_RUN",
@@ -241,6 +263,10 @@ def preflight_m12_milestone(*, events: list[dict[str, Any]],
         "experimentPreviews": experiment_receipts,
         "allFiveProfilePolicyDiagnostics": policy_receipts,
         "unsignedLocalPreviewSha256": preview_digest,
+        "engineContentEnvelopes": engine_envelopes,
+        "engineExportExclusions": engine_exclusions,
+        "engineEnvelopeContractSha": ENGINE_CONTRACT_SHA,
+        "engineEnvelopesSigned": False,
         "providerSpecificExportSigned": False,
         "actualServerTimeAttested": False,
         "existingClaimsVerifiedByServer": False,

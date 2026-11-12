@@ -167,9 +167,53 @@ class M12MilestonePreflightTests(unittest.TestCase):
                 **{p: ["level.001"] for p in PROFILES},
                 "Coral_Rescue": ["level.001", "level.001"]})
 
+    def test_unsigned_engine_envelope_export_per_game(self):
+        import engine_envelope as ee
+        r = self.call()
+        envs = r["engineContentEnvelopes"]
+        self.assertEqual(list(envs), sorted(PROFILES))
+        self.assertIs(r["engineEnvelopesSigned"], False)
+        self.assertEqual(r["engineEnvelopeContractSha"], ee.ENGINE_CONTRACT_SHA)
+        self.assertEqual(r["taskEvidenceMatrix"]["LFX-M12-008"],
+                         "UNSIGNED_ENGINE_ENVELOPE_EXPORT_NO_SIGNING_NO_CLOUD_WRITER")
+        for game, env in envs.items():
+            self.assertEqual(env["schemaVersion"], "1.0")
+            self.assertEqual(env["gameId"], game)
+            self.assertNotIn("profileId", env)
+            item = env["items"][0]
+            self.assertEqual(item["contentKind"], "Event")
+            self.assertEqual(item["payload"], {"startUtc": "2026-10-19T06:00:00Z",
+                                               "endUtc": "2026-10-20T06:00:00Z",
+                                               "levelIds": ["level.001"]})
+            self.assertEqual(item["payloadSha256"], ee.payload_sha256(item["payload"]))
+            text = ee.dumps(env)
+            ee.validate_text(text, game_id=game, known_level_ids=["level.001"])
+            with self.assertRaises(ee.EnvelopeError):  # Engine needs the level to be shipped/applied
+                ee.validate_text(text, game_id=game)
+
+    def test_engine_export_excludes_stopped_missing_and_unmapped_events(self):
+        stopped = self.event("Wonder_Pop", "stopped.01")
+        missing = self.event("Garage_Legends", "missing.01")
+        world = dict(self.event("Dino_Islands", "world.01"), contentKind="WORLD")
+        digit = dict(self.event("Coral_Rescue", "digit.01"), contentId="001.level")
+        ok = self.event("The_Fractured_Realms", "ok.01")
+        r = self.call(events=[stopped, missing, world, digit, ok],
+                      available_content={**{p: ["level.001", "001.level"] for p in PROFILES},
+                                         "Garage_Legends": []},
+                      disabled_event_ids=["Wonder_Pop/stopped.01"])
+        self.assertEqual(list(r["engineContentEnvelopes"]), ["The_Fractured_Realms"])
+        self.assertEqual(r["engineExportExclusions"], [
+            {"gameId": "Coral_Rescue", "eventId": "digit.01", "reason": "CONTENT_ID_NOT_ENGINE_ID"},
+            {"gameId": "Dino_Islands", "eventId": "world.01",
+             "reason": "CONTENT_KIND_HAS_NO_ENGINE_EVENT_MAPPING"},
+            {"gameId": "Garage_Legends", "eventId": "missing.01", "reason": "MISSING_REFERENCED_CONTENT"},
+            {"gameId": "Wonder_Pop", "eventId": "stopped.01", "reason": "STOPPED_EVENT_NOT_EXPORTED"},
+        ])
+
     def test_unverified_server_and_signature_metadata_rejected(self):
         for observed in ("2026-10-19T10:00:00+00:00", "2026-10-19T10:00Z",
-                         "2026-02-31T00:00:00Z", "wrong"):
+                         "2026-02-31T00:00:00Z", "wrong", "2026-10-19T10:00:00.000001Z",
+                         "2026-10-19T10:00:00.5Z", "２026-10-19T10:00:00Z"):
             with self.assertRaises(ValueError):
                 self.call(observed_server_utc=observed)
         with self.assertRaises(ValueError):
